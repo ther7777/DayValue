@@ -13,8 +13,8 @@ import { THEME } from '../utils/constants';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
-const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/YourUsername/DayValue/releases/latest';
-const GITHUB_RELEASES_PAGE_URL = 'https://github.com/YourUsername/DayValue/releases';
+const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/ther7777/DayValue/releases/latest';
+const GITHUB_RELEASES_PAGE_URL = 'https://github.com/ther7777/DayValue/releases';
 
 type GitHubReleaseResponse = {
   tag_name?: string;
@@ -181,7 +181,7 @@ export function SettingsScreen({ navigation }: Props) {
     } catch {
       Alert.alert(
         '检查更新失败',
-        '网络异常或 GitHub 接口不可用，请前往 GitHub Releases 页面手动下载最新版本。',
+        '网络异常或 GitHub 接口不可用（部分网络环境可能需要自备科学上网），请前往 GitHub Releases 页面手动下载最新版本。',
         [
           { text: '取消', style: 'cancel' },
           { text: '打开 GitHub', onPress: () => openExternalUrl(GITHUB_RELEASES_PAGE_URL) },
@@ -251,6 +251,7 @@ export function SettingsScreen({ navigation }: Props) {
             disabled={checkingUpdate || resetting}
             style={{ width: '100%' }}
           />
+          <Text style={styles.updateHint}>提示：检查更新可能需要自备科学上网环境。</Text>
         </BrutalCard>
 
         <BrutalCard title="危险区" titleColor={THEME.colors.dangerDark}>
@@ -361,5 +362,9 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
     lineHeight: 18,
   },
+  updateHint: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
+  },
 });
-

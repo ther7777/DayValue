@@ -38,6 +38,12 @@ const https = require("https");
 const http = require("http");
 const { spawnSync } = require("child_process");
 
+function spawnCrossPlatform(cmd, args, options) {
+  const isWindows = process.platform === "win32";
+  const baseOptions = { shell: isWindows, ...options };
+  return spawnSync(cmd, args, baseOptions);
+}
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -64,15 +70,13 @@ function formatCommandForPrint(cmd, args) {
 }
 
 function run(cmd, args, { cwd, dryRun } = {}) {
-  const isWindows = process.platform === "win32";
   const printable = formatCommandForPrint(cmd, args);
   console.log(`\n$ ${printable}`);
   if (dryRun) return;
 
-  const res = spawnSync(cmd, args, {
+  const res = spawnCrossPlatform(cmd, args, {
     cwd,
     stdio: "inherit",
-    shell: isWindows,
   });
 
   if (res.error) throw res.error;
@@ -84,15 +88,13 @@ function run(cmd, args, { cwd, dryRun } = {}) {
 }
 
 function runCaptureStdout(cmd, args, { cwd, dryRun } = {}) {
-  const isWindows = process.platform === "win32";
   const printable = formatCommandForPrint(cmd, args);
   console.log(`\n$ ${printable}`);
   if (dryRun) return { stdout: "" };
 
-  const res = spawnSync(cmd, args, {
+  const res = spawnCrossPlatform(cmd, args, {
     cwd,
     stdio: ["inherit", "pipe", "inherit"],
-    shell: isWindows,
     encoding: "utf8",
   });
 
@@ -107,11 +109,9 @@ function runCaptureStdout(cmd, args, { cwd, dryRun } = {}) {
 }
 
 function commandExists(cmd, { cwd } = {}) {
-  const isWindows = process.platform === "win32";
-  const res = spawnSync(cmd, ["--version"], {
+  const res = spawnCrossPlatform(cmd, ["--version"], {
     cwd,
     stdio: "pipe",
-    shell: isWindows,
     encoding: "utf8",
   });
   if (res.error) return false;
@@ -137,6 +137,49 @@ function readExpoVersion(appJsonPath) {
 function readJsonFile(jsonPath) {
   const raw = fs.readFileSync(jsonPath, "utf8");
   return JSON.parse(raw);
+}
+
+function getEasProjectIdFromAppJson({ repoRoot }) {
+  const appJsonPath = path.join(repoRoot, "app.json");
+  if (!fs.existsSync(appJsonPath)) return null;
+  try {
+    const json = readJsonFile(appJsonPath);
+    const projectId = json?.expo?.extra?.eas?.projectId;
+    return typeof projectId === "string" && projectId.trim() ? projectId.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function ensureEasProjectConfigured({ repoRoot, easRunner, dryRun }) {
+  const projectId = getEasProjectIdFromAppJson({ repoRoot });
+  if (projectId) return;
+
+  const initCmdPrintable = formatCommandForPrint(easRunner.cmd, [
+    ...easRunner.prefixArgs,
+    "project:init",
+  ]);
+
+  if (dryRun) {
+    console.log("🧩 检测到尚未配置 EAS Project（app.json 缺少 extra.eas.projectId）。");
+    console.log(`（实际执行时将引导你创建/链接项目：${initCmdPrintable}）`);
+    return;
+  }
+
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      [
+        "EAS project 未配置，且当前环境无法进行交互输入。",
+        "请在可交互的终端中先执行一次项目初始化：",
+        initCmdPrintable,
+        "",
+        "初始化完成后会在 app.json 写入 extra.eas.projectId，然后再重试：npm run release",
+      ].join("\n")
+    );
+  }
+
+  console.log("🧩 检测到尚未配置 EAS Project，正在引导创建/链接...");
+  run(easRunner.cmd, [...easRunner.prefixArgs, "project:init"], { cwd: repoRoot, dryRun: false });
 }
 
 function validateEasJson({ repoRoot, profile, requireApk }) {
@@ -235,11 +278,9 @@ function downloadFile(url, outPath) {
 
 function ghReleaseExists(tag, { cwd, dryRun } = {}) {
   if (dryRun) return false;
-  const isWindows = process.platform === "win32";
-  const res = spawnSync("gh", ["release", "view", tag], {
+  const res = spawnCrossPlatform("gh", ["release", "view", tag], {
     cwd,
     stdio: "ignore",
-    shell: isWindows,
   });
   return res.status === 0;
 }
@@ -280,6 +321,7 @@ async function main() {
       console.log("🏠 已选择本地打包（--local）。");
     } else {
       console.log("☁️ 使用云端构建（默认）。");
+      ensureEasProjectConfigured({ repoRoot, easRunner, dryRun });
       validateEasJson({ repoRoot, profile, requireApk: true });
     }
 

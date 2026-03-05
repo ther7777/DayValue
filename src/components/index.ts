@@ -11,3 +11,4 @@ export { StoredCardCard } from './StoredCardCard';
 export { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 export type { CardVariant } from './CardShell';
 export { PixelGridBackground } from './PixelGridBackground';
+export { default as CustomSplashScreen } from './CustomSplashScreen';

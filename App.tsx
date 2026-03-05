@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider } from 'expo-sqlite';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useFonts, PressStart2P_400Regular } from '@expo-google-fonts/press-start-2p';
+import * as SplashScreen from 'expo-splash-screen';
 
 import { initDB } from './src/database';
 import { THEME } from './src/utils/constants';
 import type { RootStackParamList } from './src/types';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
+import { CustomSplashScreen } from './src/components';
 import {
   DashboardScreen,
   SettingsScreen,
@@ -21,6 +23,11 @@ import {
   CategoriesScreen,
   StatisticsScreen,
 } from './src/screens';
+
+// 阻止原生 Splash 自动隐藏 —— 必须在模块顶层同步调用
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // 开发模式下（热重载/重复初始化）可能会报错，忽略即可
+});
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -48,17 +55,19 @@ function LoadingFallback() {
 
 export default function App() {
   const [fontsLoaded] = useFonts({ PressStart2P_400Regular });
+  const [splashDone, setSplashDone] = useState(false);
 
   if (!fontsLoaded) {
     return <LoadingFallback />;
   }
 
   return (
-    <React.Suspense fallback={<LoadingFallback />}>
-      <SQLiteProvider databaseName="dayvalue.db" onInit={initDB}>
-        <CategoriesProvider>
-          <NavigationContainer>
-            <Stack.Navigator screenOptions={screenOptions}>
+    <>
+      <React.Suspense fallback={<LoadingFallback />}>
+        <SQLiteProvider databaseName="dayvalue.db" onInit={initDB}>
+          <CategoriesProvider>
+            <NavigationContainer>
+              <Stack.Navigator screenOptions={screenOptions}>
               <Stack.Screen
                 name="Dashboard"
                 component={DashboardScreen}
@@ -110,6 +119,12 @@ export default function App() {
         </CategoriesProvider>
       </SQLiteProvider>
     </React.Suspense>
+
+    {/* CRT TV Off 过渡动画覆盖层 —— absoluteFill 叠在导航之上 */}
+    {!splashDone && (
+      <CustomSplashScreen onAnimationEnd={() => setSplashDone(true)} />
+    )}
+  </>
   );
 }
 

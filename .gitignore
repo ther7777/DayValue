@@ -39,3 +39,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Playwright CLI artifacts (local only)
+.playwright/
+.playwright-cli/
+output/playwright/
+
+# Release artifacts (local only)
+DayValue-v*.apk

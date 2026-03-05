@@ -1,6 +1,6 @@
 /**
  * StoredCardCard - 沉睡卡包卡片组件
- * 包含：沉淀本金展示、金额卡余额更新弹窗、计次卡打卡按钮，以及沉睡预警。
+ * 包含：实际沉睡本金展示、储值卡余额更新弹窗、计次卡打卡按钮，以及沉睡预警。
  */
 import React, { useState } from 'react';
 import {
@@ -71,6 +71,10 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
       Alert.alert('提示', '请输入有效金额（≥ 0）');
       return;
     }
+    if (amountMode === 'deduct' && value <= 0) {
+      Alert.alert('🧐 扣个寂寞？', '消费金额得大于 0 才有意义哦');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -139,7 +143,7 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
         {/* 主数据行 */}
         <View style={styles.dataRow}>
           <View style={styles.principalBlock}>
-            <Text style={styles.principalLabel}>沉淀本金</Text>
+            <Text style={styles.principalLabel}>实际沉睡本金</Text>
             <Text style={styles.principalValue}>{formatCurrency(principal)}</Text>
           </View>
 
@@ -193,7 +197,7 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
         </View>
       </TouchableOpacity>
 
-      {/* 金额卡更新余额弹窗 */}
+      {/* 储值卡更新余额弹窗 */}
       <Modal visible={amountModalVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modal}>

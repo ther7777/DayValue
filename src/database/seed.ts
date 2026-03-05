@@ -34,7 +34,7 @@ export async function seedSampleData(db: SQLiteDatabase): Promise<void> {
     ['MacBook Air M2（分期） (示例)', 'computer', '💻', 8999, '2026-02-01', 'unredeemed', 0, 1, 12, 799, null],
   );
 
-  // 已归档（锁定成本：写入 end_date）
+  // 已隐藏（锁定成本：写入 end_date）
   await db.runAsync(
     `INSERT INTO OneTimeItems (name, category, icon, total_price, buy_date, status, salvage_value, is_installment, installment_months, monthly_payment, end_date)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

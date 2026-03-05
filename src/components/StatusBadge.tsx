@@ -4,7 +4,7 @@ import { THEME } from '../utils/constants';
 
 interface StatusBadgeProps {
   status: 'unredeemed' | 'active' | 'archived';
-  /** 区分实体类型，影响“已归档”的文案 */
+  /** 区分实体类型，影响"已隐藏"的文案 */
   type?: 'item' | 'subscription' | 'stored_card';
 }
 
@@ -17,8 +17,8 @@ export function StatusBadge({ status, type = 'item' }: StatusBadgeProps) {
         : type === 'subscription'
           ? '已退订'
           : type === 'stored_card'
-            ? '已归档'
-          : '已停用';
+            ? '已隐藏'
+          : '已隐藏';
 
   const backgroundColor =
     status === 'active'

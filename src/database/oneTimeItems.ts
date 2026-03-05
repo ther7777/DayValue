@@ -111,7 +111,7 @@ export async function redeemOneTimeItem(db: SQLiteDatabase, id: number): Promise
   );
 }
 
-/** 归档：写入 end_date + salvage_value，并将状态置为 archived（锁定成本） */
+/** 隐藏：写入 end_date + salvage_value，并将状态置为 archived（锁定成本） */
 export async function archiveOneTimeItem(
   db: SQLiteDatabase,
   id: number,

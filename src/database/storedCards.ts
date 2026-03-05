@@ -97,7 +97,7 @@ export async function deleteStoredCard(db: SQLiteDatabase, id: number): Promise<
   await db.runAsync('DELETE FROM StoredCards WHERE id = ?', [id]);
 }
 
-/** 归档沉睡卡 */
+/** 隐藏沉睡卡 */
 export async function archiveStoredCard(
   db: SQLiteDatabase,
   id: number,
@@ -109,7 +109,7 @@ export async function archiveStoredCard(
   );
 }
 
-/** 金额卡：按本次消费扣减余额，并刷新最后更新时间 */
+/** 储值卡：按本次消费扣减余额，并刷新最后更新时间 */
 export async function deductStoredCardAmount(
   db: SQLiteDatabase,
   id: number,
@@ -127,7 +127,7 @@ export async function deductStoredCardAmount(
   );
 }
 
-/** 金额卡：直接设置当前剩余，并刷新最后更新时间 */
+/** 储值卡：直接设置当前剩余，并刷新最后更新时间 */
 export async function setStoredCardBalance(
   db: SQLiteDatabase,
   id: number,

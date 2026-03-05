@@ -108,6 +108,13 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
       Alert.alert('提示', isCount ? '剩余次数不能超过总次数' : '当前余额不能超过总面值');
       return;
     }
+    if (!isCount && face < paid) {
+      Alert.alert(
+        '🤔 不太对劲',
+        `付了 ¥${paid}，才拿到 ¥${face} 的面值？付的比得的多，要么是填反了，要么是被坑了！`,
+      );
+      return;
+    }
     const reminder = parseNumber(reminderDays, false);
     if (reminder === null || reminder < 0) {
       Alert.alert('提示', '提醒天数需为 ≥ 0 的整数');
@@ -207,7 +214,7 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
               activeOpacity={0.7}
             >
               <Text style={[styles.toggleText, cardType === 'amount' && styles.toggleTextActive]}>
-                💰 金额卡
+                💰 储值卡
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -263,11 +270,11 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
           keyboardType="number-pad"
         />
 
-        {/* 归档切换（仅编辑态） */}
+        {/* 隐藏切换（仅编辑态） */}
         {isEditing && (
           <View style={styles.archiveRow}>
             <BrutalButton
-              title={status === 'active' ? '归档卡包' : '恢复激活'}
+              title={status === 'active' ? '隐藏卡包' : '取消隐藏 / 恢复显示'}
               onPress={handleToggleArchive}
               variant={status === 'active' ? 'outline' : 'success'}
               size="md"

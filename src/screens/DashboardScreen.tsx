@@ -131,7 +131,7 @@ export function DashboardScreen({ navigation }: Props) {
       const sections: { title: string; data: OneTimeItem[] }[] = [];
       sections.push({ title: '在用资产', data: activeItems });
       if (showArchived) {
-        sections.push({ title: '已归档', data: archivedItems });
+        sections.push({ title: '已隐藏', data: archivedItems });
       }
       return sections;
     },
@@ -206,7 +206,7 @@ export function DashboardScreen({ navigation }: Props) {
           )}
           {activeTab === 'stored_cards' && (
             <>
-              <Text style={[styles.heroSubtitle, styles.heroSubtitleStored]}>沉淀本金总额 ↑</Text>
+              <Text style={[styles.heroSubtitle, styles.heroSubtitleStored]}>实际沉睡本金 ↑</Text>
               <Text style={[styles.heroCost, styles.heroCostStored]}>
                 {formatCurrency(totalPrincipal)}
               </Text>
@@ -225,16 +225,16 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.7}
           >
             <Text style={[styles.tabText, activeTab === 'assets' && styles.tabTextActive]}>
-              🟩 买断
+              买断资产
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'debts' && styles.tabActive]}
+            style={[styles.tab, activeTab === 'debts' && styles.tabActiveDebt]}
             onPress={() => setActiveTab('debts')}
             activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActive]}>
-              🟥 消耗
+            <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActiveDebt]}>
+              每日消耗
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -243,7 +243,7 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.7}
           >
             <Text style={[styles.tabText, activeTab === 'stored_cards' && styles.tabTextActiveStored]}>
-              🟨 卡包
+              沉睡卡包
             </Text>
           </TouchableOpacity>
         </View>
@@ -255,7 +255,7 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.7}
           >
             <Text style={styles.archiveToggleText}>
-              {showArchived ? '隐藏' : '显示'}已归档（{archivedItems.length}）
+              {showArchived ? '收起' : '显示'}已隐藏（{archivedItems.length}）
             </Text>
           </TouchableOpacity>
         )}
@@ -266,7 +266,7 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.7}
           >
             <Text style={styles.archiveToggleText}>
-              {showArchivedCards ? '隐藏' : '显示'}已归档（{archivedStoredCards.length}）
+              {showArchivedCards ? '收起' : '显示'}已隐藏（{archivedStoredCards.length}）
             </Text>
           </TouchableOpacity>
         )}
@@ -363,7 +363,7 @@ export function DashboardScreen({ navigation }: Props) {
                   <Text style={styles.modalDesc}>请选择卡片类型</Text>
                   <View style={styles.modalActions}>
                     <BrutalButton
-                      title="💰 金额卡"
+                      title="💰 储值卡"
                       onPress={() => {
                         setAddModalVisible(false);
                         navigation.navigate('AddEditStoredCard', { defaultCardType: 'amount' });
@@ -480,7 +480,7 @@ export function DashboardScreen({ navigation }: Props) {
                 </Text>
                 <View style={styles.helpFormula}>
                   <Text style={styles.helpFormulaText}>
-                    沉淀本金 = 剩余面值 × (实际支付 / 总面值)
+                    实际沉睡本金 = 剩余面值 × (实际支付 / 总面值)
                   </Text>
                 </View>
               </View>
@@ -667,6 +667,10 @@ const styles = StyleSheet.create({
     borderColor: THEME.colors.borderDark,
     backgroundColor: THEME.colors.primaryLight + '30',
   },
+  tabActiveDebt: {
+    borderColor: '#C0392B',
+    backgroundColor: 'rgba(231,76,60,0.2)',
+  },
   tabText: {
     fontSize: THEME.fontSize.sm,
     fontWeight: '600',
@@ -674,6 +678,10 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: THEME.colors.primary,
+    fontWeight: '700',
+  },
+  tabTextActiveDebt: {
+    color: '#C0392B',
     fontWeight: '700',
   },
   tabActiveStored: {

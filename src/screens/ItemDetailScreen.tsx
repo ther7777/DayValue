@@ -38,7 +38,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const { itemId } = route.params;
   const [item, setItem] = useState<OneTimeItem | null>(null);
 
-  // 归档弹窗
+  // 隐藏弹窗
   const [archiveModalVisible, setArchiveModalVisible] = useState(false);
   const [archiveDate, setArchiveDate] = useState(getTodayString());
   const [archiveSalvage, setArchiveSalvage] = useState('');
@@ -156,6 +156,10 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     const salvageNum = archiveSalvage ? parseFloat(archiveSalvage) : 0;
     if (isNaN(salvageNum) || salvageNum < 0) {
       Alert.alert('提示', '请输入有效的残值');
+      return;
+    }
+    if (item && salvageNum > item.total_price) {
+      Alert.alert('🤨 残值溢出', '转手价比买入价还高？那你是赚了不是亏了，检查一下数字吧。');
       return;
     }
     await archiveOneTimeItem(db, itemId, archiveDate, salvageNum);

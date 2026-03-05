@@ -55,8 +55,8 @@ export function calculateDailyDebt(monthlyPayment: number): number {
 }
 
 /**
- * 计算沉睡卡包的真实沉淀本金
- * 公式：沉淀本金 = (实际支付 / 总面值) × 当前剩余
+ * 计算沉睡卡包的实际沉睡本金
+ * 公式：实际沉睡本金 = (实际支付 / 总面值) × 当前剩余
  */
 export function calculateStoredPrincipal(
   actualPaid: number,

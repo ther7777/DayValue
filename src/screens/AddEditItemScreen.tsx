@@ -94,7 +94,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
   }
 
   function resolveNextStatus(): OneTimeItemStatus {
-    // 已归档：不允许在此页改变状态（避免破坏“锁定成本”约束）
+    // 已隐藏：不允许在此页改变状态（避免破坏"锁定成本"约束）
     if (originalStatus === 'archived') return 'archived';
 
     // 已赎身/在用：默认保持 active（赎身通过详情页动作触发）
@@ -124,6 +124,10 @@ export function AddEditItemScreen({ route, navigation }: Props) {
       Alert.alert('提示', '残值不能为负数');
       return;
     }
+    if (salvageNum > totalPriceNum) {
+      Alert.alert('🤨 残值溢出', '转手价比买入价还高？那你是赚了不是亏了，检查一下数字吧。');
+      return;
+    }
 
     let monthsNum: number | null = null;
     let monthlyPaymentNum: number | null = null;
@@ -142,6 +146,10 @@ export function AddEditItemScreen({ route, navigation }: Props) {
       monthsNum = m;
       monthlyPaymentNum = p;
       downPaymentNum = downPayment ? (parseFloat(downPayment) || 0) : 0;
+      if (downPaymentNum >= totalPriceNum) {
+        Alert.alert('😯 首付都够全款了', '首付≥总价，说明你已经付得起全款了，关掉分期开关吧！');
+        return;
+      }
     }
 
     const nextStatus = resolveNextStatus();

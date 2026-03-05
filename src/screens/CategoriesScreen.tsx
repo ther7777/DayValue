@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Dimensions,
   View,
   Text,
   FlatList,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Modal,
   Alert,
   StyleSheet,
@@ -17,11 +19,38 @@ import { BrutalButton, PixelInput } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Categories'>;
 
+const ICON_GRID_MAX_HEIGHT = Math.min(Dimensions.get('window').height * 0.35, 320);
+
 const ICON_PRESETS: string[] = [
-  '📱', '💻', '🏠', '🛵', '👕', '🎮',
-  '💿', '📚', '⚽', '🍔', '☕', '🧾',
-  '🧠', '🧩', '🧹', '🎧', '🎬', '🧱',
-  '📦', '🧯', '🧪', '🧰', '💡', '🪙',
+  // 数码/电子
+  '📱', '💻', '🖥️', '⌨️', '🖨️', '📷',
+  // 家居/生活
+  '🏠', '🛏️', '🪴', '🧺', '🔑', '🧹',
+  // 交通/出行
+  '🚗', '🛵', '🚌', '✈️', '🚲', '🧳',
+  // 服饰/时尚
+  '👕', '👗', '👟', '🧢', '👜', '💍',
+  // 娱乐/游戏
+  '🎮', '🎧', '🎬', '🎵', '🎸', '🎹',
+  // 餐饮/美食
+  '🍔', '🍕', '🍜', '🥤', '🍰', '☕',
+  // 学习/办公
+  '📚', '🖊️', '📎', '🗂️', '📝', '🧠',
+  // 运动/健身
+  '⚽', '🏊', '🎿', '🧘', '🏋️', '🚴',
+  // 医疗/健康
+  '🏥', '💊', '🩺', '🩹', '🧬', '💉',
+  // 宠物
+  '🐱', '🐶', '🐾', '🐟', '🐦', '🐰',
+  // 美妆/个护
+  '💄', '💅', '🧴', '💆', '🪞', '🧼',
+  // 理财/金融
+  '💰', '💳', '🏦', '📈', '🪙', '🧾',
+  // 旅行/户外
+  '🏖️', '🗺️', '⛺', '🌄', '🏔️', '🎒',
+  // 其他常用
+  '📦', '🎁', '🎂', '🔔', '⭐', '❤️',
+  '💿', '🧩', '💡', '🧰', '🧪', '🧯',
 ];
 
 function typeLabel(type: CategoryType) {
@@ -222,8 +251,10 @@ export function CategoriesScreen({}: Props) {
         />
 
         <Modal visible={createVisible} transparent animationType="fade">
-          <View style={styles.overlay}>
-            <View style={styles.modalCard}>
+          <TouchableWithoutFeedback onPress={() => setCreateVisible(false)}>
+            <View style={styles.overlay}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>新增分类</Text>
 
               <PixelInput
@@ -239,6 +270,9 @@ export function CategoriesScreen({}: Props) {
                 numColumns={6}
                 keyExtractor={v => v}
                 contentContainerStyle={styles.iconGrid}
+                style={{ maxHeight: ICON_GRID_MAX_HEIGHT }}
+                showsVerticalScrollIndicator
+                persistentScrollbar
                 renderItem={({ item }) => {
                   const active = item === newIcon;
                   return (
@@ -270,13 +304,17 @@ export function CategoriesScreen({}: Props) {
                   style={styles.modalBtnRight}
                 />
               </View>
+                </View>
+              </TouchableWithoutFeedback>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </Modal>
 
         <Modal visible={editingCategory !== null} transparent animationType="fade">
-          <View style={styles.overlay}>
-            <View style={styles.modalCard}>
+          <TouchableWithoutFeedback onPress={resetEditModal}>
+            <View style={styles.overlay}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>编辑分类</Text>
 
               <PixelInput
@@ -292,6 +330,9 @@ export function CategoriesScreen({}: Props) {
                 numColumns={6}
                 keyExtractor={v => `edit-${v}`}
                 contentContainerStyle={styles.iconGrid}
+                style={{ maxHeight: ICON_GRID_MAX_HEIGHT }}
+                showsVerticalScrollIndicator
+                persistentScrollbar
                 renderItem={({ item }) => {
                   const active = item === newIcon;
                   return (
@@ -330,8 +371,10 @@ export function CategoriesScreen({}: Props) {
                 size="md"
                 style={styles.modalCloseBtn}
               />
+                </View>
+              </TouchableWithoutFeedback>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </Modal>
       </View>
     </SafeAreaView>
@@ -425,6 +468,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 420,
+    maxHeight: '90%',
     backgroundColor: THEME.colors.surface,
     ...THEME.pixelBorder,
     ...THEME.pixelShadow,

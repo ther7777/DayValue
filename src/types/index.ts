@@ -2,7 +2,10 @@
 
 export type OneTimeItemStatus = 'unredeemed' | 'active' | 'archived';
 export type SubscriptionStatus = 'active' | 'archived';
-export type BillingCycle = 'monthly' | 'yearly';
+export type StoredCardStatus = 'active' | 'archived';
+export type BillingCycle = 'monthly' | 'quarterly' | 'yearly';
+export type CategoryType = 'item' | 'subscription' | 'stored_card';
+export type StoredCardType = 'amount' | 'count';
 
 /** 一次性资产（OneTimeItems 表） */
 export interface OneTimeItem {
@@ -33,6 +36,21 @@ export interface Subscription {
   status: SubscriptionStatus;
 }
 
+/** 沉睡卡包（StoredCards 表） */
+export interface StoredCard {
+  id: number;
+  name: string;
+  category: string | null;
+  icon: string | null;
+  card_type: StoredCardType;
+  actual_paid: number;
+  face_value: number;
+  current_balance: number;
+  last_updated_date: string;
+  reminder_days: number;
+  status: StoredCardStatus;
+}
+
 // ===================== 输入 DTO =====================
 
 export interface OneTimeItemInput {
@@ -60,6 +78,19 @@ export interface SubscriptionInput {
   status?: SubscriptionStatus;
 }
 
+export interface StoredCardInput {
+  name: string;
+  category: string;
+  icon: string;
+  card_type: StoredCardType;
+  actual_paid: number;
+  face_value: number;
+  current_balance: number;
+  last_updated_date: string;
+  reminder_days?: number;
+  status?: StoredCardStatus;
+}
+
 // ===================== 辅助类型 =====================
 
 export interface CategoryInfo {
@@ -68,12 +99,22 @@ export interface CategoryInfo {
   icon: string;
 }
 
+/** 分类表（Categories 表） */
+export interface Category extends CategoryInfo {
+  type: CategoryType;
+}
+
 // ===================== 导航参数 =====================
 
 export type RootStackParamList = {
   Dashboard: undefined;
   AddEditItem: { itemId?: number; defaultIsInstallment?: boolean } | undefined;
   AddEditSubscription: { subscriptionId?: number } | undefined;
+  AddEditStoredCard:
+    | { storedCardId?: number; defaultCardType?: StoredCardType }
+    | undefined;
   ItemDetail: { itemId: number };
   SubscriptionDetail: { subscriptionId: number };
+  Categories: undefined;
+  Statistics: undefined;
 };

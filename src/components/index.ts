@@ -7,3 +7,4 @@ export { CategoryPicker } from './CategoryPicker';
 export { DatePickerField } from './DatePickerField';
 export { ItemCard } from './ItemCard';
 export { SubscriptionCard } from './SubscriptionCard';
+export { StoredCardCard } from './StoredCardCard';

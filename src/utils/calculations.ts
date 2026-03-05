@@ -29,16 +29,21 @@ export function calculateDailyCost(
   return effectiveCost / daysUsed;
 }
 
+import type { BillingCycle } from '../types';
+
 /**
  * 计算周期订阅的日均成本
  * monthly → cycle_price / 30
+ * quarterly → cycle_price / 90
  * yearly  → cycle_price / 365
  */
 export function calculateSubscriptionDailyCost(
   cyclePrice: number,
-  billingCycle: 'monthly' | 'yearly',
+  billingCycle: BillingCycle,
 ): number {
-  return billingCycle === 'monthly' ? cyclePrice / 30 : cyclePrice / 365;
+  if (billingCycle === 'monthly') return cyclePrice / 30;
+  if (billingCycle === 'quarterly') return cyclePrice / 90;
+  return cyclePrice / 365;
 }
 
 /**
@@ -47,6 +52,37 @@ export function calculateSubscriptionDailyCost(
  */
 export function calculateDailyDebt(monthlyPayment: number): number {
   return monthlyPayment / 30;
+}
+
+/**
+ * 计算沉睡卡包的真实沉淀本金
+ * 公式：沉淀本金 = (实际支付 / 总面值) × 当前剩余
+ */
+export function calculateStoredPrincipal(
+  actualPaid: number,
+  faceValue: number,
+  currentBalance: number,
+): number {
+  if (faceValue <= 0) return 0;
+  return (actualPaid / faceValue) * currentBalance;
+}
+
+function parseISODate(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1);
+}
+
+/**
+ * 计算距上次更新已过去的自然日
+ * 同一天返回 0，昨天返回 1
+ */
+export function calculateDaysSince(dateString: string): number {
+  const start = parseISODate(dateString);
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffMs = end.getTime() - start.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return Math.max(diffDays, 0);
 }
 
 /**

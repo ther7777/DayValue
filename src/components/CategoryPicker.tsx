@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,18 +8,37 @@ import {
   StyleSheet,
   type ViewStyle,
 } from 'react-native';
-import { CATEGORIES, THEME } from '../utils/constants';
-import type { CategoryInfo } from '../types';
+import { THEME } from '../utils/constants';
+import { useCategories } from '../contexts/CategoriesContext';
+import type { CategoryInfo, CategoryType } from '../types';
 
 interface CategoryPickerProps {
+  type: CategoryType;
   selectedId: string;
   onSelect: (category: CategoryInfo) => void;
   style?: ViewStyle;
 }
 
-export function CategoryPicker({ selectedId, onSelect, style }: CategoryPickerProps) {
+export function CategoryPicker({ type, selectedId, onSelect, style }: CategoryPickerProps) {
   const [visible, setVisible] = useState(false);
-  const selected = CATEGORIES.find(c => c.id === selectedId) ?? CATEGORIES[CATEGORIES.length - 1];
+  const {
+    itemCategories,
+    subscriptionCategories,
+    storedCardCategories,
+    getCategoryInfo,
+  } = useCategories();
+
+  const categories = useMemo(
+    () =>
+      type === 'item'
+        ? itemCategories
+        : type === 'subscription'
+          ? subscriptionCategories
+          : storedCardCategories,
+    [itemCategories, storedCardCategories, subscriptionCategories, type],
+  );
+  const selected = getCategoryInfo(type, selectedId);
+  const listData = categories.length > 0 ? categories : [selected];
 
   return (
     <View style={[styles.container, style]}>
@@ -44,7 +63,7 @@ export function CategoryPicker({ selectedId, onSelect, style }: CategoryPickerPr
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>选择分类</Text>
             <FlatList
-              data={CATEGORIES}
+              data={listData}
               numColumns={3}
               keyExtractor={item => item.id}
               contentContainerStyle={styles.grid}

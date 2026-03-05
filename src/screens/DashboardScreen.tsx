@@ -3,6 +3,7 @@ import {
   View,
   Text,
   SectionList,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   Modal,
@@ -11,21 +12,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, OneTimeItem, Subscription } from '../types';
-import { getAllOneTimeItems, getAllSubscriptions } from '../database';
+import type { RootStackParamList, OneTimeItem, Subscription, StoredCard } from '../types';
+import { getAllOneTimeItems, getAllSubscriptions, getAllStoredCards } from '../database';
 import {
   calculateDaysUsed,
   calculateDailyCost,
   calculateSubscriptionDailyCost,
   calculateDailyDebt,
+  calculateStoredPrincipal,
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
-import { ItemCard, SubscriptionCard, EmptyState, BrutalButton } from '../components';
+import { ItemCard, SubscriptionCard, EmptyState, BrutalButton, StoredCardCard } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
-type TabKey = 'assets' | 'debts';
+type TabKey = 'assets' | 'debts' | 'stored_cards';
 type DebtListItem = OneTimeItem | Subscription;
 
 function isSubscription(item: DebtListItem): item is Subscription {
@@ -37,9 +39,11 @@ export function DashboardScreen({ navigation }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('assets');
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showArchivedCards, setShowArchivedCards] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -48,12 +52,14 @@ export function DashboardScreen({ navigation }: Props) {
   );
 
   async function loadData() {
-    const [i, s] = await Promise.all([
+    const [i, s, c] = await Promise.all([
       getAllOneTimeItems(db),
       getAllSubscriptions(db),
+      getAllStoredCards(db),
     ]);
     setItems(i);
     setSubscriptions(s);
+    setStoredCards(c);
   }
 
   const activeItems = useMemo(
@@ -97,6 +103,29 @@ export function DashboardScreen({ navigation }: Props) {
 
   const totalDebtDailyCost = totalInstallmentDailyDebt + totalSubDailyCost;
 
+  // ─── Stored Cards ─────────────────────────────────────
+  const activeStoredCards = useMemo(
+    () => storedCards.filter(c => c.status === 'active'),
+    [storedCards],
+  );
+  const archivedStoredCards = useMemo(
+    () => storedCards.filter(c => c.status === 'archived'),
+    [storedCards],
+  );
+  const totalPrincipal = useMemo(
+    () =>
+      activeStoredCards.reduce(
+        (sum, card) =>
+          sum + calculateStoredPrincipal(card.actual_paid, card.face_value, card.current_balance),
+        0,
+      ),
+    [activeStoredCards],
+  );
+  const visibleStoredCards = useMemo(
+    () => (showArchivedCards ? storedCards : activeStoredCards),
+    [activeStoredCards, showArchivedCards, storedCards],
+  );
+
   const assetsSections = useMemo(
     () => {
       const sections: { title: string; data: OneTimeItem[] }[] = [];
@@ -120,18 +149,38 @@ export function DashboardScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         {/* 顶部 Hero 区域 - 跟随 Tab 切换主题 */}
-        <View style={[styles.hero, activeTab === 'debts' && styles.heroDebt]}>
+        <View style={[
+          styles.hero,
+          activeTab === 'debts' && styles.heroDebt,
+          activeTab === 'stored_cards' && styles.heroStored,
+        ]}>
           <View style={styles.heroTitleRow}>
             <Text style={styles.heroTitle}>DayValue</Text>
-            <TouchableOpacity
-              style={styles.helpBtn}
-              onPress={() => setHelpModalVisible(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.helpBtnText}>?</Text>
-            </TouchableOpacity>
+            <View style={styles.heroActions}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => navigation.navigate('Statistics')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.iconBtnText}>📊</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => navigation.navigate('Categories')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.iconBtnText}>⚙️</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.helpBtn}
+                onPress={() => setHelpModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.helpBtnText}>?</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          {activeTab === 'assets' ? (
+          {activeTab === 'assets' && (
             <>
               <Text style={styles.heroSubtitle}>今日日均成本 ↓</Text>
               <Text style={styles.heroCost}>
@@ -142,7 +191,8 @@ export function DashboardScreen({ navigation }: Props) {
                 共 {activeItems.length} 件已买断 · 数字越低越回本
               </Text>
             </>
-          ) : (
+          )}
+          {activeTab === 'debts' && (
             <>
               <Text style={[styles.heroSubtitle, styles.heroSubtitleDebt]}>今日固定流失</Text>
               <Text style={styles.heroCost}>
@@ -151,6 +201,17 @@ export function DashboardScreen({ navigation }: Props) {
               </Text>
               <Text style={styles.heroHint}>
                 {unredeemedItems.length} 件分期 + {activeSubs.length} 个订阅
+              </Text>
+            </>
+          )}
+          {activeTab === 'stored_cards' && (
+            <>
+              <Text style={[styles.heroSubtitle, styles.heroSubtitleStored]}>沉淀本金总额 ↑</Text>
+              <Text style={[styles.heroCost, styles.heroCostStored]}>
+                {formatCurrency(totalPrincipal)}
+              </Text>
+              <Text style={styles.heroHintStored}>
+                🚨 你共有 {formatCurrency(totalPrincipal)} 的真金白银，正押在别人手里。
               </Text>
             </>
           )}
@@ -164,7 +225,7 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.7}
           >
             <Text style={[styles.tabText, activeTab === 'assets' && styles.tabTextActive]}>
-              🟩 买断资产
+              🟩 买断
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -173,7 +234,16 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.7}
           >
             <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActive]}>
-              🟥 每日消耗
+              🟥 消耗
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'stored_cards' && styles.tabActiveStored]}
+            onPress={() => setActiveTab('stored_cards')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, activeTab === 'stored_cards' && styles.tabTextActiveStored]}>
+              🟨 卡包
             </Text>
           </TouchableOpacity>
         </View>
@@ -189,9 +259,20 @@ export function DashboardScreen({ navigation }: Props) {
             </Text>
           </TouchableOpacity>
         )}
+        {activeTab === 'stored_cards' && archivedStoredCards.length > 0 && (
+          <TouchableOpacity
+            style={styles.archiveToggle}
+            onPress={() => setShowArchivedCards(v => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.archiveToggleText}>
+              {showArchivedCards ? '隐藏' : '显示'}已归档（{archivedStoredCards.length}）
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* 列表 */}
-        {activeTab === 'assets' ? (
+        {activeTab === 'assets' && (
           <SectionList
             sections={assetsSections}
             keyExtractor={(item) => `item-${item.id}`}
@@ -207,7 +288,8 @@ export function DashboardScreen({ navigation }: Props) {
             )}
             ListEmptyComponent={<EmptyState message="还没有资产记录" icon="📦" />}
           />
-        ) : (
+        )}
+        {activeTab === 'debts' && (
           <SectionList
             sections={debtSections}
             keyExtractor={(item) => (isSubscription(item) ? `sub-${item.id}` : `item-${item.id}`)}
@@ -216,7 +298,6 @@ export function DashboardScreen({ navigation }: Props) {
               <Text style={styles.sectionTitle}>{section.title}</Text>
             )}
             renderItem={({ item }) => {
-              // 避坑口诀：用类型守卫区分渲染组件，避免 SectionList 的联合类型推断报错
               if (isSubscription(item)) {
                 return (
                   <SubscriptionCard
@@ -237,6 +318,25 @@ export function DashboardScreen({ navigation }: Props) {
             ListEmptyComponent={<EmptyState message="没有分期或订阅记录" icon="💳" />}
           />
         )}
+        {activeTab === 'stored_cards' && (
+          <FlatList
+            data={visibleStoredCards}
+            keyExtractor={card => `card-${card.id}`}
+            contentContainerStyle={styles.list}
+            renderItem={({ item }) => (
+              <StoredCardCard
+                card={item}
+                onPress={() =>
+                  navigation.navigate('AddEditStoredCard', { storedCardId: item.id })
+                }
+                onDataChanged={loadData}
+              />
+            )}
+            ListEmptyComponent={
+              <EmptyState message="还没有储值卡记录\n点击 ＋ 开始追踪你的卡包" icon="💳" />
+            }
+          />
+        )}
 
         {/* 底部新增按钮 */}
         <TouchableOpacity
@@ -253,41 +353,79 @@ export function DashboardScreen({ navigation }: Props) {
           <Text style={styles.fabText}>＋</Text>
         </TouchableOpacity>
 
-        {/* 新增弹窗（每日消耗） */}
+        {/* 新增弹窗 */}
         <Modal visible={addModalVisible} transparent animationType="fade">
           <View style={styles.overlay}>
             <View style={styles.modal}>
-              <Text style={styles.modalTitle}>新增每日消耗</Text>
-              <Text style={styles.modalDesc}>请选择要新增的类型</Text>
-              <View style={styles.modalActions}>
-                <BrutalButton
-                  title="新增分期物品"
-                  onPress={() => {
-                    setAddModalVisible(false);
-                    navigation.navigate('AddEditItem', { defaultIsInstallment: true });
-                  }}
-                  variant="danger"
-                  size="md"
-                  style={styles.modalBtn}
-                />
-                <BrutalButton
-                  title="新增周期订阅"
-                  onPress={() => {
-                    setAddModalVisible(false);
-                    navigation.navigate('AddEditSubscription');
-                  }}
-                  variant="accent"
-                  size="md"
-                  style={styles.modalBtn}
-                />
-                <BrutalButton
-                  title="取消"
-                  onPress={() => setAddModalVisible(false)}
-                  variant="outline"
-                  size="md"
-                  style={styles.modalBtn}
-                />
-              </View>
+              {activeTab === 'stored_cards' ? (
+                <>
+                  <Text style={styles.modalTitle}>新增储值卡包</Text>
+                  <Text style={styles.modalDesc}>请选择卡片类型</Text>
+                  <View style={styles.modalActions}>
+                    <BrutalButton
+                      title="💰 金额卡"
+                      onPress={() => {
+                        setAddModalVisible(false);
+                        navigation.navigate('AddEditStoredCard', { defaultCardType: 'amount' });
+                      }}
+                      variant="accent"
+                      size="md"
+                      style={styles.modalBtn}
+                    />
+                    <BrutalButton
+                      title="🔢 计次卡"
+                      onPress={() => {
+                        setAddModalVisible(false);
+                        navigation.navigate('AddEditStoredCard', { defaultCardType: 'count' });
+                      }}
+                      variant="primary"
+                      size="md"
+                      style={styles.modalBtn}
+                    />
+                    <BrutalButton
+                      title="取消"
+                      onPress={() => setAddModalVisible(false)}
+                      variant="outline"
+                      size="md"
+                      style={styles.modalBtn}
+                    />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.modalTitle}>新增每日消耗</Text>
+                  <Text style={styles.modalDesc}>请选择要新增的类型</Text>
+                  <View style={styles.modalActions}>
+                    <BrutalButton
+                      title="新增分期物品"
+                      onPress={() => {
+                        setAddModalVisible(false);
+                        navigation.navigate('AddEditItem', { defaultIsInstallment: true });
+                      }}
+                      variant="danger"
+                      size="md"
+                      style={styles.modalBtn}
+                    />
+                    <BrutalButton
+                      title="新增周期订阅"
+                      onPress={() => {
+                        setAddModalVisible(false);
+                        navigation.navigate('AddEditSubscription');
+                      }}
+                      variant="accent"
+                      size="md"
+                      style={styles.modalBtn}
+                    />
+                    <BrutalButton
+                      title="取消"
+                      onPress={() => setAddModalVisible(false)}
+                      variant="outline"
+                      size="md"
+                      style={styles.modalBtn}
+                    />
+                  </View>
+                </>
+              )}
             </View>
           </View>
         </Modal>
@@ -330,6 +468,23 @@ export function DashboardScreen({ navigation }: Props) {
                 </View>
               </View>
 
+              <View style={styles.helpDivider} />
+
+              {/* 沉睡卡包说明 */}
+              <View style={styles.helpSection}>
+                <View style={[styles.helpTag, { backgroundColor: '#E6A817' }]}>
+                  <Text style={styles.helpTagText}>🟨 沉睡卡包</Text>
+                </View>
+                <Text style={styles.helpBody}>
+                  储值卡、次卡是商家向你提前收取的无息贷款。赠金/折扣让你觉得赚了，但剩余余额随时可能缩水（商家倒闭、忘记消费）。
+                </Text>
+                <View style={styles.helpFormula}>
+                  <Text style={styles.helpFormulaText}>
+                    沉淀本金 = 剩余面值 × (实际支付 / 总面值)
+                  </Text>
+                </View>
+              </View>
+
               <BrutalButton
                 title="明白了"
                 onPress={() => setHelpModalVisible(false)}
@@ -365,16 +520,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#E17055',
     borderBottomColor: '#C56B4B',
   },
+  heroStored: {
+    backgroundColor: '#B8860B',
+    borderBottomColor: '#856404',
+  },
   heroTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
   },
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   heroTitle: {
     fontSize: 20,
     fontFamily: THEME.fontFamily.pixel,
     color: '#FFFFFF',
+  },
+  iconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  iconBtnText: {
+    fontSize: 14,
   },
   helpBtn: {
     width: 24,
@@ -399,11 +575,17 @@ const styles = StyleSheet.create({
   heroSubtitleDebt: {
     color: '#FFD8CC',
   },
+  heroSubtitleStored: {
+    color: '#FFE89A',
+  },
   heroCost: {
     fontSize: 22,
     fontFamily: THEME.fontFamily.pixel,
     color: '#FFFFFF',
     marginBottom: 4,
+  },
+  heroCostStored: {
+    color: '#FFE066',
   },
   heroUnit: {
     fontSize: THEME.fontSize.sm,
@@ -412,6 +594,11 @@ const styles = StyleSheet.create({
   heroHint: {
     fontSize: THEME.fontSize.xs,
     color: '#FFFFFFCC',
+  },
+  heroHintStored: {
+    fontSize: THEME.fontSize.xs,
+    color: '#FFE89ACC',
+    fontWeight: '700',
   },
   helpSection: {
     marginBottom: 4,
@@ -487,6 +674,14 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: THEME.colors.primary,
+    fontWeight: '700',
+  },
+  tabActiveStored: {
+    borderColor: '#B8860B',
+    backgroundColor: THEME.colors.warning + '33',
+  },
+  tabTextActiveStored: {
+    color: '#856404',
     fontWeight: '700',
   },
   list: {

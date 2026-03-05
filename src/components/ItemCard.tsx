@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, type ViewStyle } from 'react-native';
-import { THEME, getCategoryInfo } from '../utils/constants';
+import { THEME } from '../utils/constants';
+import { useCategories } from '../contexts/CategoriesContext';
 import { calculateDaysUsed, calculateDailyCost, calculateDailyDebt } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
@@ -13,7 +14,8 @@ interface ItemCardProps {
 }
 
 export function ItemCard({ item, onPress, style }: ItemCardProps) {
-  const category = getCategoryInfo(item.category ?? 'other');
+  const { getCategoryInfo } = useCategories();
+  const category = getCategoryInfo('item', item.category ?? 'other');
   const icon = item.icon ?? category.icon;
 
   const isUnredeemed = item.status === 'unredeemed';

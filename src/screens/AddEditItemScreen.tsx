@@ -202,7 +202,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
           placeholder="例如：iPhone 15"
         />
 
-        <CategoryPicker selectedId={category} onSelect={handleCategoryChange} />
+        <CategoryPicker type="item" selectedId={category} onSelect={handleCategoryChange} />
 
         <PixelInput
           label="总金额 (¥)"

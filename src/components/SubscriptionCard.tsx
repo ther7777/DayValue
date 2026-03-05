@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, type ViewStyle } from 'react-native';
-import { THEME, getCategoryInfo } from '../utils/constants';
+import { THEME } from '../utils/constants';
+import { useCategories } from '../contexts/CategoriesContext';
 import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
@@ -13,13 +14,19 @@ interface SubscriptionCardProps {
 }
 
 export function SubscriptionCard({ subscription, onPress, style }: SubscriptionCardProps) {
-  const category = getCategoryInfo(subscription.category ?? 'other');
+  const { getCategoryInfo } = useCategories();
+  const category = getCategoryInfo('subscription', subscription.category ?? 'other');
   const icon = subscription.icon ?? category.icon;
   const dailyCost = calculateSubscriptionDailyCost(
     subscription.cycle_price,
     subscription.billing_cycle,
   );
-  const cycleLabel = subscription.billing_cycle === 'monthly' ? '月付' : '年付';
+  const cycleLabel =
+    subscription.billing_cycle === 'monthly'
+      ? '月付'
+      : subscription.billing_cycle === 'quarterly'
+        ? '季付'
+        : '年付';
 
   return (
     <TouchableOpacity

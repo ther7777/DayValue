@@ -17,13 +17,15 @@ import {
 } from '../database';
 import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { getCategoryInfo, THEME } from '../utils/constants';
+import { THEME } from '../utils/constants';
+import { useCategories } from '../contexts/CategoriesContext';
 import { BrutalButton, StatusBadge } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SubscriptionDetail'>;
 
 export function SubscriptionDetailScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
+  const { getCategoryInfo } = useCategories();
   const { subscriptionId } = route.params;
   const [sub, setSub] = useState<Subscription | null>(null);
 
@@ -76,10 +78,15 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  const category = getCategoryInfo(sub.category ?? 'other');
+  const category = getCategoryInfo('subscription', sub.category ?? 'other');
   const icon = sub.icon ?? category.icon;
   const dailyCost = calculateSubscriptionDailyCost(sub.cycle_price, sub.billing_cycle);
-  const cycleLabel = sub.billing_cycle === 'monthly' ? '月付' : '年付';
+  const cycleLabel =
+    sub.billing_cycle === 'monthly'
+      ? '月付'
+      : sub.billing_cycle === 'quarterly'
+        ? '季付'
+        : '年付';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -254,4 +261,3 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
-

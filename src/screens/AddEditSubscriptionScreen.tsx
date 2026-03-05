@@ -122,7 +122,11 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
           placeholder="例如：QQ 音乐会员"
         />
 
-        <CategoryPicker selectedId={category} onSelect={handleCategoryChange} />
+        <CategoryPicker
+          type="subscription"
+          selectedId={category}
+          onSelect={handleCategoryChange}
+        />
 
         {/* 计费周期切换 */}
         <View style={styles.fieldGroup}>
@@ -148,6 +152,23 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
             <TouchableOpacity
               style={[
                 styles.toggleBtn,
+                billingCycle === 'quarterly' && styles.toggleActive,
+              ]}
+              onPress={() => setBillingCycle('quarterly')}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.toggleText,
+                  billingCycle === 'quarterly' && styles.toggleTextActive,
+                ]}
+              >
+                按季
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
                 billingCycle === 'yearly' && styles.toggleActive,
               ]}
               onPress={() => setBillingCycle('yearly')}
@@ -166,7 +187,13 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
         </View>
 
         <PixelInput
-          label={`${billingCycle === 'monthly' ? '月' : '年'}付金额 (¥)`}
+          label={`${
+            billingCycle === 'monthly'
+              ? '月'
+              : billingCycle === 'quarterly'
+                ? '季'
+                : '年'
+          }付金额 (¥)`}
           value={cyclePrice}
           onChangeText={setCyclePrice}
           placeholder="0.00"

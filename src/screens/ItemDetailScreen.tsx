@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   Alert,
   Modal,
+  Animated,
   StyleSheet,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -25,13 +26,15 @@ import {
   calculateInstallmentPremium,
 } from '../utils/calculations';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
-import { getCategoryInfo, THEME } from '../utils/constants';
+import { THEME } from '../utils/constants';
+import { useCategories } from '../contexts/CategoriesContext';
 import { BrutalButton, PixelInput, DatePickerField, StatusBadge } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ItemDetail'>;
 
 export function ItemDetailScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
+  const { getCategoryInfo } = useCategories();
   const { itemId } = route.params;
   const [item, setItem] = useState<OneTimeItem | null>(null);
 
@@ -39,6 +42,18 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const [archiveModalVisible, setArchiveModalVisible] = useState(false);
   const [archiveDate, setArchiveDate] = useState(getTodayString());
   const [archiveSalvage, setArchiveSalvage] = useState('');
+
+  // 赎身成功动画弹窗
+  const [redeemModalVisible, setRedeemModalVisible] = useState(false);
+  const [redeemBusy, setRedeemBusy] = useState(false);
+  const redeemScale = useRef(new Animated.Value(0.9)).current;
+  const redeemShakeX = useRef(new Animated.Value(0)).current;
+  const redeemColor = useRef(new Animated.Value(0)).current;
+
+  const redeemTextColor = redeemColor.interpolate({
+    inputRange: [0, 1],
+    outputRange: [THEME.colors.textPrimary, THEME.colors.success],
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -73,9 +88,65 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       { text: '取消', style: 'cancel' },
       {
         text: '确认赎身',
-        onPress: async () => {
-          await redeemOneTimeItem(db, itemId);
-          loadItem();
+        onPress: () => {
+          if (redeemBusy) return;
+          setRedeemBusy(true);
+          setRedeemModalVisible(true);
+          redeemScale.setValue(0.9);
+          redeemShakeX.setValue(0);
+          redeemColor.setValue(0);
+
+          Animated.parallel([
+            Animated.sequence([
+              Animated.timing(redeemScale, {
+                toValue: 1.25,
+                duration: 320,
+                useNativeDriver: true,
+              }),
+              Animated.timing(redeemScale, {
+                toValue: 1.05,
+                duration: 180,
+                useNativeDriver: true,
+              }),
+              Animated.timing(redeemScale, {
+                toValue: 1.15,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+              Animated.timing(redeemScale, {
+                toValue: 1.0,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.delay(500),
+            ]),
+            Animated.sequence([
+              Animated.timing(redeemShakeX, { toValue: -10, duration: 70, useNativeDriver: true }),
+              Animated.timing(redeemShakeX, { toValue: 10, duration: 70, useNativeDriver: true }),
+              Animated.timing(redeemShakeX, { toValue: -8, duration: 70, useNativeDriver: true }),
+              Animated.timing(redeemShakeX, { toValue: 8, duration: 70, useNativeDriver: true }),
+              Animated.timing(redeemShakeX, { toValue: -6, duration: 70, useNativeDriver: true }),
+              Animated.timing(redeemShakeX, { toValue: 6, duration: 70, useNativeDriver: true }),
+              Animated.timing(redeemShakeX, { toValue: 0, duration: 90, useNativeDriver: true }),
+              Animated.delay(990),
+            ]),
+            Animated.sequence([
+              Animated.timing(redeemColor, { toValue: 1, duration: 900, useNativeDriver: false }),
+              Animated.delay(600),
+            ]),
+          ]).start(async ({ finished }) => {
+            if (!finished) return;
+            try {
+              await redeemOneTimeItem(db, itemId);
+              setRedeemModalVisible(false);
+              setRedeemBusy(false);
+              navigation.goBack();
+            } catch {
+              setRedeemModalVisible(false);
+              setRedeemBusy(false);
+              Alert.alert('错误', '赎身失败，请重试');
+            }
+          });
         },
       },
     ]);
@@ -100,7 +171,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  const category = getCategoryInfo(item.category ?? 'other');
+  const category = getCategoryInfo('item', item.category ?? 'other');
   const icon = item.icon ?? category.icon;
 
   const isUnredeemed = item.status === 'unredeemed';
@@ -225,6 +296,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
             onPress={handleRedeem}
             variant="accent"
             size="md"
+            disabled={redeemBusy}
             style={styles.actionBtn}
           />
         )}
@@ -247,6 +319,27 @@ export function ItemDetailScreen({ route, navigation }: Props) {
           style={styles.actionBtn}
         />
       </View>
+
+      {/* 赎身成功动画 */}
+      <Modal
+        visible={redeemModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.redeemOverlay}>
+          <Animated.View
+            style={[
+              styles.redeemBox,
+              { transform: [{ translateX: redeemShakeX }, { scale: redeemScale }] },
+            ]}
+          >
+            <Animated.Text style={[styles.redeemText, { color: redeemTextColor }]}>
+              🔗 锁链碎裂！赎身成功！
+            </Animated.Text>
+          </Animated.View>
+        </View>
+      </Modal>
 
       {/* 停用弹窗 */}
       <Modal visible={archiveModalVisible} transparent animationType="fade">
@@ -406,6 +499,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  redeemOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: THEME.spacing.xl,
+  },
+  redeemBox: {
+    backgroundColor: THEME.colors.surface,
+    ...THEME.pixelBorder,
+    ...THEME.pixelShadow,
+    paddingVertical: THEME.spacing.xl,
+    paddingHorizontal: THEME.spacing.xl,
+    alignItems: 'center',
+  },
+  redeemText: {
+    fontSize: THEME.fontSize.lg,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   modal: {
     width: '88%',

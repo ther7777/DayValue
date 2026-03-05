@@ -87,21 +87,21 @@ export function DashboardScreen({ navigation }: Props) {
     }, 0);
   }, [activeItems]);
 
-  const totalSubDailyCost = useMemo(() => {
+  const totalSubscriptionCost = useMemo(() => {
     return activeSubs.reduce(
       (sum, sub) => sum + calculateSubscriptionDailyCost(sub.cycle_price, sub.billing_cycle),
       0,
     );
   }, [activeSubs]);
 
-  const totalInstallmentDailyDebt = useMemo(() => {
+  const totalInstallmentDebt = useMemo(() => {
     return unredeemedItems.reduce(
       (sum, item) => sum + calculateDailyDebt(item.monthly_payment ?? 0),
       0,
     );
   }, [unredeemedItems]);
 
-  const totalDebtDailyCost = totalInstallmentDailyDebt + totalSubDailyCost;
+  const totalDebtDailyCost = totalInstallmentDebt + totalSubscriptionCost;
 
   // ─── Stored Cards ─────────────────────────────────────
   const activeStoredCards = useMemo(
@@ -200,7 +200,7 @@ export function DashboardScreen({ navigation }: Props) {
                 <Text style={styles.heroUnit}>/天</Text>
               </Text>
               <Text style={styles.heroHint}>
-                {unredeemedItems.length} 件分期 + {activeSubs.length} 个订阅
+                隐形日供 {formatCurrency(totalInstallmentDebt)} · 订阅日均 {formatCurrency(totalSubscriptionCost)}
               </Text>
             </>
           )}

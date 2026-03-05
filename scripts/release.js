@@ -19,6 +19,7 @@
  * - --skip-build            跳过打包（仅发布现有 APK）
  * - --skip-release          跳过发布（仅本地打包 APK）
  * - --local                 改用本地打包（默认：云端构建）
+ * - --non-interactive       强制使用 EAS non-interactive（适用于 CI：需要 EXPO_TOKEN）
  *
  * 说明（默认云端构建）：
  * - 默认使用云端构建（推荐）：`eas build -p android --profile preview --wait --json`
@@ -313,6 +314,14 @@ async function main() {
       console.log(`✅ APK 已生成：${apkPath}`);
     } else {
       console.log("🔨 正在触发云端构建并等待完成...");
+      const forceNonInteractive = Boolean(args["non-interactive"]);
+      const hasExpoToken = typeof process.env.EXPO_TOKEN === "string" && process.env.EXPO_TOKEN.trim().length > 0;
+      const isCi = typeof process.env.CI === "string" && process.env.CI.trim().length > 0;
+      const useNonInteractive = forceNonInteractive || hasExpoToken || isCi;
+      if (!useNonInteractive) {
+        console.log("👤 未检测到 EXPO_TOKEN/CI，将允许交互登录（不传 --non-interactive）。");
+      }
+
       const cloudArgs = [
         ...easRunner.prefixArgs,
         "build",
@@ -321,15 +330,33 @@ async function main() {
         "--profile",
         String(profile),
         "--wait",
-        "--non-interactive",
+        ...(useNonInteractive ? ["--non-interactive"] : []),
         "--json",
       ];
 
-      const { stdout } = runCaptureStdout(
-        easRunner.cmd,
-        cloudArgs,
-        { cwd: repoRoot, dryRun }
-      );
+      let stdout = "";
+      try {
+        ({ stdout } = runCaptureStdout(easRunner.cmd, cloudArgs, { cwd: repoRoot, dryRun }));
+      } catch (err) {
+        const msg = err && typeof err.message === "string" ? err.message : String(err);
+        if (/Expo user account is required/i.test(msg) || /eas login/i.test(msg) || /EXPO_TOKEN/i.test(msg)) {
+          const loginCmd = formatCommandForPrint(easRunner.cmd, [...easRunner.prefixArgs, "login"]);
+          throw new Error(
+            [
+              "EAS 需要登录 Expo 账号才能进行云端构建。",
+              "",
+              "解决方案（二选一）：",
+              `1) 本机交互登录：${loginCmd}`,
+              '2) 设置环境变量 EXPO_TOKEN（适用于 CI / non-interactive）',
+              "   - PowerShell：$env:EXPO_TOKEN=\"<token>\"; npm run release",
+              "   - macOS/Linux：EXPO_TOKEN=\"<token>\" npm run release",
+              "",
+              "然后重试执行：npm run release",
+            ].join("\n")
+          );
+        }
+        throw err;
+      }
 
       if (dryRun) {
         console.log("🧪 dry-run 模式：已跳过云端构建结果解析与 APK 下载。");

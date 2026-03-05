@@ -1,3 +1,5 @@
+# <img src="assets/github_banner.png" alt="DayValue" />
+
 # 👾 DayValue：守卫你的小金库
 
 > “有想过你每天的固定开销吗？可不只包括眼前的吃喝哦。在这个鼓吹分期、消费主义盛行的时代，DayValue 帮你量化隐形开销，看清真实的代价。”
@@ -9,9 +11,9 @@ DayValue 是一款采用像素风（Pixel Art）与新粗野主义（Neobrutalis
 ## 📸 产品截图
 
 <p align="center">
-  <img src="pictures/05794e4acff5c2b82a2045baafe2c33b.jpg" width="280" alt="DayValue 截图 1" />
-  <img src="pictures/bd9511f064c78688908a806ce29fff72.jpg" width="280" alt="DayValue 截图 2" />
-  <img src="pictures/d1fe8882759ee1594ffd6e09e13ee1e6.jpg" width="280" alt="DayValue 截图 3" />
+  <img src="assets/pictures/05794e4acff5c2b82a2045baafe2c33b.jpg" width="280" alt="DayValue 截图 1" />
+  <img src="assets/pictures/bd9511f064c78688908a806ce29fff72.jpg" width="280" alt="DayValue 截图 2" />
+  <img src="assets/pictures/d1fe8882759ee1594ffd6e09e13ee1e6.jpg" width="280" alt="DayValue 截图 3" />
 </p>
 
 ## 💡 我们能帮你做什么？

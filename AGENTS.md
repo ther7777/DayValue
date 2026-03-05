@@ -23,6 +23,12 @@ Usage notes:
 <available_skills>
 
 <skill>
+<name>copilot-rule</name>
+<description>Governs Copilot Agent interaction continuity in all conversations. Use this skill whenever a task or subtask is about to be marked as complete, a question needs clarification, or a workflow phase ends. This skill MUST be active in every coding session — it prevents the agent from abruptly ending the conversation and enforces active follow-up after every piece of completed work.</description>
+<location>global</location>
+</skill>
+
+<skill>
 <name>doc-coauthoring</name>
 <description>Guide users through a structured workflow for co-authoring documentation. Use when user wants to write documentation, proposals, technical specs, decision docs, or similar structured content. This workflow helps users efficiently transfer context, refine content through iteration, and verify the doc works for readers. Trigger when user mentions writing docs, creating proposals, drafting specs, or similar documentation tasks.</description>
 <location>global</location>

@@ -12,6 +12,7 @@ import type { RootStackParamList } from './src/types';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
 import {
   DashboardScreen,
+  SettingsScreen,
   AddEditItemScreen,
   AddEditSubscriptionScreen,
   AddEditStoredCardScreen,
@@ -62,6 +63,11 @@ export default function App() {
                 name="Dashboard"
                 component={DashboardScreen}
                 options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Settings"
+                component={SettingsScreen}
+                options={{ title: '设置' }}
               />
               <Stack.Screen
                 name="AddEditItem"

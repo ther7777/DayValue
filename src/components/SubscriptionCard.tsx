@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
 import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
+import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import type { Subscription } from '../types';
 
 interface SubscriptionCardProps {
@@ -28,15 +29,17 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
         ? '季付'
         : '年付';
 
+  const variantColors = CARD_VARIANT_COLORS['subscription'];
+
   return (
-    <TouchableOpacity
-      style={[styles.card, style]}
+    <CardShell
       onPress={onPress}
-      activeOpacity={0.8}
+      variant="subscription"
+      style={style}
     >
       {/* 顶部：图标 + 名称 + 状态 */}
       <View style={styles.header}>
-        <View style={styles.iconBox}>
+        <View style={[styles.iconBox, { backgroundColor: variantColors.iconBg + '30' }]}>
           <Text style={styles.iconText}>{icon}</Text>
         </View>
         <View style={styles.headerInfo}>
@@ -56,25 +59,18 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
           <Text style={styles.statLabel}>开始</Text>
           <Text style={styles.statValue}>{subscription.start_date}</Text>
         </View>
-        <View style={[styles.statItem, styles.statHighlight]}>
+        <View style={[styles.statItem, styles.statHighlight, { backgroundColor: variantColors.statHighlightBg + '18' }]}>
           <Text style={styles.statLabel}>日均</Text>
-          <Text style={[styles.statValue, styles.dailyCost]}>
+          <Text style={[styles.statValue, styles.dailyCost, { color: variantColors.accentText }]}>
             {formatCurrency(dailyCost)}
           </Text>
         </View>
       </View>
-    </TouchableOpacity>
+    </CardShell>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: THEME.colors.surface,
-    ...THEME.pixelBorder,
-    ...THEME.pixelShadow,
-    padding: THEME.spacing.lg,
-    marginBottom: THEME.spacing.md,
-  } as ViewStyle,
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -84,7 +80,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 6,
-    backgroundColor: THEME.colors.accentLight + '30',
     borderWidth: 1.5,
     borderColor: THEME.colors.borderDark,
     justifyContent: 'center',
@@ -118,7 +113,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statHighlight: {
-    backgroundColor: THEME.colors.accentLight + '18',
     marginHorizontal: -2,
     paddingVertical: 4,
     borderRadius: 4,
@@ -134,7 +128,6 @@ const styles = StyleSheet.create({
     color: THEME.colors.textPrimary,
   },
   dailyCost: {
-    color: THEME.colors.accent,
     fontFamily: THEME.fontFamily.pixel,
     fontSize: THEME.fontSize.sm,
   },

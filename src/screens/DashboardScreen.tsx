@@ -166,7 +166,7 @@ export function DashboardScreen({ navigation }: Props) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconBtn}
-                onPress={() => navigation.navigate('Categories')}
+                onPress={() => navigation.navigate('Settings')}
                 activeOpacity={0.7}
               >
                 <Text style={styles.iconBtnText}>⚙️</Text>
@@ -440,13 +440,30 @@ export function DashboardScreen({ navigation }: Props) {
             <View style={styles.modal}>
               <Text style={styles.modalTitle}>这笔账怎么算？</Text>
 
+              {/* 产品理念引言 */}
+              <View style={styles.helpSection}>
+                <View style={[styles.helpTag, { backgroundColor: THEME.colors.primary }]}>
+                  <Text style={styles.helpTagText}>关于 DayValue：小而美</Text>
+                </View>
+                <Text style={styles.helpBody}>
+                  {'“在这个鼓吹消费的时代，我们坚持绝对离线、拒绝购物 API。'}
+                  <Text style={{ fontWeight: 'bold', color: '#1A1A2E' }}>
+                    DayValue 拒绝记录繁琐碎片的日常流水，而是聚焦于那些真正有“存在感”的中大额资产与隐形债务。
+                  </Text>
+                  {'不为智能而智能，只用最笨拙的手动录入，帮你量化真实开销，守卫小金库。”'}
+                </Text>
+              </View>
+
+              <View style={styles.helpDivider} />
+
               {/* 买断资产说明 */}
               <View style={styles.helpSection}>
                 <View style={[styles.helpTag, { backgroundColor: '#00B894' }]}>
                   <Text style={styles.helpTagText}>🟩 买断资产</Text>
                 </View>
                 <Text style={styles.helpBody}>
-                  已全款买下的物品。总价已锁定，使用天数越长，每天的平均成本越低。数字不断下降，代表你正在把好东西用到极致。
+                  <Text style={{ fontWeight: 'bold', color: '#1A1A2E' }}>已全款买下的物品</Text>
+                  {'。总价已锁定，使用天数越长，每天的平均成本越低。数字不断下降，代表你正在把好东西用到极致。'}
                 </Text>
                 <View style={styles.helpFormula}>
                   <Text style={styles.helpFormulaText}>日均成本 = (总价 − 残值) ÷ 使用天数</Text>
@@ -461,7 +478,9 @@ export function DashboardScreen({ navigation }: Props) {
                   <Text style={styles.helpTagText}>🟥 每日消耗</Text>
                 </View>
                 <Text style={styles.helpBody}>
-                  尚未结清的分期与持续订阅。这是你每天一睁眼就要付出的底线开销。早日还清分期，减少闲置订阅。
+                  {'尚未结清的'}
+                  <Text style={{ fontWeight: 'bold', color: '#1A1A2E' }}>分期与持续订阅</Text>
+                  {'。这是你每天一睁眼就要付出的底线开销。早日还清分期，减少闲置订阅。'}
                 </Text>
                 <View style={styles.helpFormula}>
                   <Text style={styles.helpFormulaText}>日消耗 = 月供或月租 ÷ 30</Text>
@@ -476,7 +495,8 @@ export function DashboardScreen({ navigation }: Props) {
                   <Text style={styles.helpTagText}>🟨 沉睡卡包</Text>
                 </View>
                 <Text style={styles.helpBody}>
-                  储值卡、次卡是商家向你提前收取的无息贷款。赠金/折扣让你觉得赚了，但剩余余额随时可能缩水（商家倒闭、忘记消费）。
+                  <Text style={{ fontWeight: 'bold', color: '#1A1A2E' }}>储值卡、次卡</Text>
+                  {'是商家向你提前收取的无息贷款。赠金/折扣让你觉得赚了，但剩余余额随时可能缩水（商家倒闭、忘记消费）。'}
                 </Text>
                 <View style={styles.helpFormula}>
                   <Text style={styles.helpFormulaText}>

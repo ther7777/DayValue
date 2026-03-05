@@ -1,4 +1,5 @@
 export { DashboardScreen } from './DashboardScreen';
+export { SettingsScreen } from './SettingsScreen';
 export { AddEditItemScreen } from './AddEditItemScreen';
 export { AddEditSubscriptionScreen } from './AddEditSubscriptionScreen';
 export { ItemDetailScreen } from './ItemDetailScreen';

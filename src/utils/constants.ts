@@ -24,14 +24,25 @@ export function getCategoryInfo(categoryId: string): CategoryInfo {
 
 export const THEME = {
   colors: {
+    // ---- 品牌灵魂紫 (Hero / 顶栏 / 品牌标识) ----
     primary: '#6C5CE7',
     primaryLight: '#A29BFE',
+    primaryDark: '#4834D4',
+
+    // ---- 功能强调色 ----
     accent: '#00CEC9',
     accentLight: '#81ECEC',
+    /** 暖黄高亮：日均成本徽章、CTA 按钮强调 */
+    highlight: '#FFD93D',
+    highlightMuted: '#FFF3CD',
+
+    // ---- 语义色 ----
     danger: '#FF7675',
     dangerDark: '#D63031',
     warning: '#FDCB6E',
     success: '#00B894',
+
+    // ---- 表面 & 文字 ----
     background: '#F0F3FA',
     surface: '#FFFFFF',
     textPrimary: '#2D3436',

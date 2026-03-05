@@ -28,6 +28,7 @@ import { useCategories } from '../contexts/CategoriesContext';
 import { StatusBadge } from './StatusBadge';
 import { BrutalButton } from './BrutalButton';
 import { PixelInput } from './PixelInput';
+import { CardShell } from './CardShell';
 
 interface StoredCardCardProps {
   card: StoredCard;
@@ -116,10 +117,10 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
 
   return (
     <>
-      <TouchableOpacity
-        style={[styles.card, isDormant && styles.cardDormant]}
+      <CardShell
         onPress={onPress}
-        activeOpacity={0.85}
+        variant="stored_card"
+        alert={isDormant}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -195,7 +196,7 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
             />
           )}
         </View>
-      </TouchableOpacity>
+      </CardShell>
 
       {/* 储值卡更新余额弹窗 */}
       <Modal visible={amountModalVisible} transparent animationType="fade">
@@ -268,17 +269,6 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: THEME.colors.surface,
-    ...THEME.pixelBorder,
-    ...THEME.pixelShadow,
-    marginBottom: THEME.spacing.md,
-    padding: THEME.spacing.lg,
-  },
-  cardDormant: {
-    borderColor: THEME.colors.warning,
-    shadowColor: '#B7860B',
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

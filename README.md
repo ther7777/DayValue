@@ -2,7 +2,7 @@
   <img src="assets/github_banner.png" alt="DayValue" width="900" />
 </p>
 
-# 👾 DayValue：守卫你的小金库
+# 👾 DayValue：长期主义！守卫你的小金库
 
 > “有想过你每天的固定开销吗？可不只包括眼前的吃喝哦。在这个鼓吹分期、消费主义盛行的时代，DayValue 帮你量化隐形开销，看清真实的代价。”
 

@@ -1,4 +1,6 @@
-# <img src="assets/github_banner.png" alt="DayValue" />
+<p align="center">
+  <img src="assets/github_banner.png" alt="DayValue" width="900" />
+</p>
 
 # 👾 DayValue：守卫你的小金库
 

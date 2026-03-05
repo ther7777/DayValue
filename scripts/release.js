@@ -20,6 +20,7 @@
  * - --skip-release          跳过发布（仅本地打包 APK）
  * - --local                 改用本地打包（默认：云端构建）
  * - --non-interactive       强制使用 EAS non-interactive（适用于 CI：需要 EXPO_TOKEN）
+ * - --build-id <id>         不触发新构建，直接从指定 EAS Build ID 下载产物后发布
  *
  * 说明（默认云端构建）：
  * - 默认使用云端构建（推荐）：`eas build -p android --profile preview --wait --json`
@@ -292,6 +293,7 @@ async function main() {
   const skipBuild = Boolean(args["skip-build"]);
   const skipRelease = Boolean(args["skip-release"]);
   const useLocalBuild = Boolean(args.local);
+  const buildId = typeof args["build-id"] === "string" && args["build-id"].trim() ? args["build-id"].trim() : null;
 
   const repoRoot = path.resolve(__dirname, "..");
   const appJsonPath = path.join(repoRoot, "app.json");
@@ -354,6 +356,48 @@ async function main() {
         );
       }
       console.log(`✅ APK 已生成：${apkPath}`);
+    } else if (buildId) {
+      console.log(`⬇️ 将从指定 Build ID 下载产物：${buildId}`);
+      let viewStdout = "";
+      try {
+        ({ stdout: viewStdout } = runCaptureStdout(
+          easRunner.cmd,
+          [...easRunner.prefixArgs, "build:view", buildId, "--json"],
+          { cwd: repoRoot, dryRun }
+        ));
+      } catch (err) {
+        const msg = err && typeof err.message === "string" ? err.message : String(err);
+        if (/Expo user account is required/i.test(msg) || /eas login/i.test(msg) || /EXPO_TOKEN/i.test(msg)) {
+          const loginCmd = formatCommandForPrint(easRunner.cmd, [...easRunner.prefixArgs, "login"]);
+          throw new Error(
+            ["EAS 需要登录 Expo 账号才能下载构建产物。", `请先登录：${loginCmd}`].join("\n")
+          );
+        }
+        throw err;
+      }
+
+      if (dryRun) {
+        console.log("🧪 dry-run 模式：已跳过 build:view 解析与 APK 下载。");
+        console.log(`（实际执行时将下载到：${apkPath}）`);
+      } else {
+        let build;
+        try {
+          build = JSON.parse(viewStdout);
+        } catch {
+          throw new Error("未能解析 eas build:view 的 JSON 输出。");
+        }
+        const artifactUrl = extractArtifactUrl(build);
+        if (!artifactUrl) {
+          throw new Error(`未从 build:view 中找到可下载的产物链接（build id: ${buildId}）。`);
+        }
+        console.log("⬇️ 正在下载 APK...");
+        console.log(`🔗 ${artifactUrl}`);
+        await downloadFile(artifactUrl, apkPath);
+        if (!fs.existsSync(apkPath)) {
+          throw new Error(`下载结束，但未找到文件：${apkPath}`);
+        }
+        console.log(`✅ APK 已下载：${apkPath}`);
+      }
     } else {
       console.log("🔨 正在触发云端构建并等待完成...");
       const forceNonInteractive = Boolean(args["non-interactive"]);
@@ -361,7 +405,12 @@ async function main() {
       const isCi = typeof process.env.CI === "string" && process.env.CI.trim().length > 0;
       const useNonInteractive = forceNonInteractive || hasExpoToken || isCi;
 
-      if (useNonInteractive) {
+      // 说明：eas build 在使用 --json 时要求同时提供 --non-interactive。
+      // 为了避免构建结束后询问“是否安装到模拟器/真机”而依赖 adb，我们优先尝试 non-interactive + json。
+      const tryNonInteractiveFirst = true;
+      let downloaded = false;
+
+      if (tryNonInteractiveFirst) {
         const cloudArgs = [
           ...easRunner.prefixArgs,
           "build",
@@ -374,9 +423,40 @@ async function main() {
           "--json",
         ];
 
-        let stdout = "";
         try {
-          ({ stdout } = runCaptureStdout(easRunner.cmd, cloudArgs, { cwd: repoRoot, dryRun }));
+          const { stdout } = runCaptureStdout(easRunner.cmd, cloudArgs, { cwd: repoRoot, dryRun });
+          if (dryRun) {
+            console.log("🧪 dry-run 模式：已跳过云端构建结果解析与 APK 下载。");
+            console.log(`（实际执行时将下载到：${apkPath}）`);
+            downloaded = true;
+          } else {
+            let parsed;
+            try {
+              parsed = stdout ? JSON.parse(stdout) : null;
+            } catch {
+              throw new Error("未能解析 EAS 的 JSON 输出。");
+            }
+
+            const build = pickBuildFromEasJsonOutput(parsed);
+            if (!build) {
+              throw new Error("EAS 返回的 JSON 中未找到 build 对象。");
+            }
+
+            const artifactUrl = extractArtifactUrl(build);
+            if (!artifactUrl) {
+              const idHint = build?.id ? `（build id: ${build.id}）` : "";
+              throw new Error(`构建已结束，但未找到可下载的产物链接${idHint}。`);
+            }
+
+            console.log("⬇️ 正在下载 APK...");
+            console.log(`🔗 ${artifactUrl}`);
+            await downloadFile(artifactUrl, apkPath);
+            if (!fs.existsSync(apkPath)) {
+              throw new Error(`下载结束，但未找到文件：${apkPath}`);
+            }
+            console.log(`✅ APK 已下载：${apkPath}`);
+            downloaded = true;
+          }
         } catch (err) {
           const msg = err && typeof err.message === "string" ? err.message : String(err);
           if (/Expo user account is required/i.test(msg) || /eas login/i.test(msg) || /EXPO_TOKEN/i.test(msg)) {
@@ -384,85 +464,46 @@ async function main() {
             throw new Error(
               [
                 "EAS 需要登录 Expo 账号才能进行云端构建。",
-                "",
-                "解决方案（二选一）：",
-                `1) 本机交互登录：${loginCmd}`,
-                '2) 设置环境变量 EXPO_TOKEN（适用于 CI / non-interactive）',
-                "   - PowerShell：$env:EXPO_TOKEN=\"<token>\"; npm run release -- --non-interactive",
-                "   - macOS/Linux：EXPO_TOKEN=\"<token>\" npm run release -- --non-interactive",
-                "",
-                "然后重试执行：npm run release -- --non-interactive",
+                `请先登录：${loginCmd}`,
+                "或在 CI 中设置 EXPO_TOKEN 后运行：npm run release -- --non-interactive",
               ].join("\n")
             );
           }
-          if (/Keystore/i.test(msg) || /Generating a new Keystore/i.test(msg)) {
-            throw new Error(
-              [
-                "当前项目尚未配置 Android 签名凭据（Keystore），因此无法在 --non-interactive 模式下自动生成。",
-                "请先在可交互终端中运行一次（不加 --non-interactive）以完成凭据初始化：",
-                `- ${formatCommandForPrint("npm", ["run", "release", "--", "--skip-release"])}`,
-                "",
-                "初始化完成后，再在 CI 中使用 EXPO_TOKEN + --non-interactive 运行。",
-              ].join("\n")
-            );
+
+          // non-interactive 失败时，回退到交互构建（用于首次生成 Keystore/选择凭据）
+          console.log("⚠️ non-interactive 构建失败，将回退到交互构建以完成首次环境/凭据配置。");
+          if (!process.stdin.isTTY && !dryRun) {
+            throw err;
           }
-          throw err;
         }
+      }
 
-        if (dryRun) {
-          console.log("🧪 dry-run 模式：已跳过云端构建结果解析与 APK 下载。");
-          console.log(`（实际执行时将下载到：${apkPath}）`);
-        } else {
-          let parsed;
-          try {
-            parsed = stdout ? JSON.parse(stdout) : null;
-          } catch {
-            throw new Error("未能解析 EAS 的 JSON 输出。");
-          }
-
-          const build = pickBuildFromEasJsonOutput(parsed);
-          if (!build) {
-            throw new Error("EAS 返回的 JSON 中未找到 build 对象。");
-          }
-
-          const artifactUrl = extractArtifactUrl(build);
-          if (!artifactUrl) {
-            const buildId = build?.id ? `（build id: ${build.id}）` : "";
-            throw new Error(
-              `构建已结束，但未从 EAS 输出中找到可下载的产物链接${buildId}。\n你可以在 EAS Dashboard 中手动下载产物后，用 --skip-build 继续发布。`
-            );
-          }
-
-          console.log("⬇️ 正在下载 APK...");
-          console.log(`🔗 ${artifactUrl}`);
-          await downloadFile(artifactUrl, apkPath);
-
-          if (!fs.existsSync(apkPath)) {
-            throw new Error(`下载结束，但未找到文件：${apkPath}`);
-          }
-          console.log(`✅ APK 已下载：${apkPath}`);
-        }
-      } else {
+      if (!downloaded) {
         if (!process.stdin.isTTY && !dryRun) {
           throw new Error(
             "当前环境无法交互输入，但你又未启用 --non-interactive。\n请在可交互终端运行，或在 CI 中设置 EXPO_TOKEN 并追加 --non-interactive。"
           );
         }
 
-        console.log("👤 交互模式：将先完成云端构建（可在首次构建时引导配置 Keystore）。");
-        run(
-          easRunner.cmd,
-          [
-            ...easRunner.prefixArgs,
-            "build",
-            "-p",
-            "android",
-            "--profile",
-            String(profile),
-            "--wait",
-          ],
-          { cwd: repoRoot, dryRun }
-        );
+        console.log("👤 交互模式：将先完成云端构建（首次构建可能会引导生成 Keystore）。");
+        console.log("提示：如果你本机没装 Android Studio/adb，请在最后的“是否安装到模拟器”提示里选择 no。");
+        try {
+          run(
+            easRunner.cmd,
+            [
+              ...easRunner.prefixArgs,
+              "build",
+              "-p",
+              "android",
+              "--profile",
+              String(profile),
+              "--wait",
+            ],
+            { cwd: repoRoot, dryRun }
+          );
+        } catch (err) {
+          console.log("⚠️ eas build 返回非 0（可能是 adb/模拟器安装失败），将继续尝试从 EAS 拉取已完成的构建产物...");
+        }
 
         if (dryRun) {
           console.log("🧪 dry-run 模式：已跳过构建产物查询与 APK 下载。");

@@ -6,6 +6,14 @@ DayValue 是一款采用像素风（Pixel Art）与新粗野主义（Neobrutalis
 
 很多支付陷阱用“免息”、“低月供”或“充500送200”来掩盖极高的真实代价。DayValue 的诞生，就是为了撕下这些伪装，把你被蒙蔽的现金流一笔笔算清楚。
 
+## 📸 产品截图
+
+<p align="center">
+  <img src="pictures/05794e4acff5c2b82a2045baafe2c33b.jpg" width="280" alt="DayValue 截图 1" />
+  <img src="pictures/bd9511f064c78688908a806ce29fff72.jpg" width="280" alt="DayValue 截图 2" />
+  <img src="pictures/d1fe8882759ee1594ffd6e09e13ee1e6.jpg" width="280" alt="DayValue 截图 3" />
+</p>
+
 ## 💡 我们能帮你做什么？
 
 1. 计算买断贵重物品的性价比（日均成本）
@@ -33,4 +41,6 @@ DayValue 是一款采用像素风（Pixel Art）与新粗野主义（Neobrutalis
 
 - **纯粹与安全**：完全本地化（基于 SQLite），无任何云端上传，你的财务隐私只留在你的手机里。
 
-欢迎大家下载体验、Fork 代码。如果你有任何对产品迭代有建议，非常欢迎提交 Issue！
+欢迎大家下载体验、Fork 代码。如果你有任何对产品迭代有建议，非常欢迎提交 Issue或直接通过下方邮件与我联系！
+
+联系方式：1792480506@qq.com

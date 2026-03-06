@@ -30,9 +30,9 @@ const https = require("https");
 const http = require("http");
 const { spawnSync } = require("child_process");
 
-function spawnCrossPlatform(cmd, args, options) {
-  const isWindows = process.platform === "win32";
-  return spawnSync(cmd, args, { shell: isWindows, ...options });
+function spawnCrossPlatform(cmd, args, options = {}) {
+  const { shell = false, ...restOptions } = options;
+  return spawnSync(cmd, args, { shell, ...restOptions });
 }
 
 function parseArgs(argv) {

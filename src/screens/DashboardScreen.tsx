@@ -54,22 +54,26 @@ export function DashboardScreen({ navigation }: Props) {
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedCards, setShowArchivedCards] = useState(false);
 
+  const loadData = useCallback(async () => {
+    try {
+      const [i, s, c] = await Promise.all([
+        getAllOneTimeItems(db),
+        getAllSubscriptions(db),
+        getAllStoredCards(db),
+      ]);
+      setItems(i);
+      setSubscriptions(s);
+      setStoredCards(c);
+    } catch (error) {
+      console.error('加载首页数据失败', error);
+    }
+  }, [db]);
+
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, []),
+      void loadData();
+    }, [loadData]),
   );
-
-  async function loadData() {
-    const [i, s, c] = await Promise.all([
-      getAllOneTimeItems(db),
-      getAllSubscriptions(db),
-      getAllStoredCards(db),
-    ]);
-    setItems(i);
-    setSubscriptions(s);
-    setStoredCards(c);
-  }
 
   const activeItems = useMemo(
     () => items.filter(i => i.status === 'active'),

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -45,12 +45,20 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
   const [startDate, setStartDate] = useState(getTodayString());
   const [loading, setLoading] = useState(false);
 
+  const loadItemSafe = useCallback(async (id: number) => {
+    try {
+      await loadItem(id);
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '加载失败，请重试');
+    }
+  }, [db]);
+
   useEffect(() => {
     navigation.setOptions({ title: isEditing ? '编辑订阅' : '新增订阅' });
     if (isEditing && editId !== undefined) {
-      void loadItem(editId);
+      void loadItemSafe(editId);
     }
-  }, [editId, isEditing, navigation]);
+  }, [editId, isEditing, loadItemSafe, navigation]);
 
   async function loadItem(id: number) {
     const sub = await getSubscriptionById(db, id);
@@ -126,8 +134,8 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
 
       setOriginalImageUri(savedImageUri);
       navigation.goBack();
-    } catch {
-      Alert.alert('错误', '保存失败，请重试');
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '保存失败，请重试');
     } finally {
       setLoading(false);
     }

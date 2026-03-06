@@ -117,22 +117,26 @@ export function StatisticsScreen({}: Props) {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [cards, setCards] = useState<StoredCard[]>([]);
 
+  const load = useCallback(async () => {
+    try {
+      const [i, s, c] = await Promise.all([
+        getAllOneTimeItems(db),
+        getAllSubscriptions(db),
+        getAllStoredCards(db),
+      ]);
+      setItems(i);
+      setSubs(s);
+      setCards(c);
+    } catch (error) {
+      console.error('加载统计数据失败', error);
+    }
+  }, [db]);
+
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [db]),
+      void load();
+    }, [load]),
   );
-
-  async function load() {
-    const [i, s, c] = await Promise.all([
-      getAllOneTimeItems(db),
-      getAllSubscriptions(db),
-      getAllStoredCards(db),
-    ]);
-    setItems(i);
-    setSubs(s);
-    setCards(c);
-  }
 
   const chartWidth = Math.min(Dimensions.get('window').width - THEME.spacing.xl * 2, 520);
   const piePaddingLeft = String(Math.round(chartWidth / 4));

@@ -30,19 +30,23 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
   const { subscriptionId } = route.params;
   const [sub, setSub] = useState<Subscription | null>(null);
 
+  const loadData = useCallback(async () => {
+    try {
+      const data = await getSubscriptionById(db, subscriptionId);
+      setSub(data);
+      if (data) {
+        navigation.setOptions({ title: data.name });
+      }
+    } catch (error) {
+      console.error('加载订阅详情失败', error);
+    }
+  }, [db, navigation, subscriptionId]);
+
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [subscriptionId]),
+      void loadData();
+    }, [loadData]),
   );
-
-  async function loadData() {
-    const data = await getSubscriptionById(db, subscriptionId);
-    setSub(data);
-    if (data) {
-      navigation.setOptions({ title: data.name });
-    }
-  }
 
   async function handleDelete() {
     Alert.alert('确认删除', `确定要删除“${sub?.name}”吗？此操作不可撤销。`, [
@@ -66,7 +70,7 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
         text: '确认退订',
         onPress: async () => {
           await archiveSubscription(db, subscriptionId);
-          loadData();
+          await loadData();
         },
       },
     ]);

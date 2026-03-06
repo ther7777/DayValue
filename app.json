@@ -29,7 +29,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "允许 DayValue 访问你的照片，用于给资产、订阅和卡包上传封面图片。"
+          "photosPermission": "允许 DayValue 访问你的照片，用于给资产、订阅和卡包上传封面图片。",
+          "colors": {
+            "cropToolbarColor": "#1F2937",
+            "cropToolbarIconColor": "#F9FAFB",
+            "cropToolbarActionTextColor": "#F9FAFB",
+            "cropBackButtonIconColor": "#F9FAFB",
+            "cropBackgroundColor": "#111827"
+          }
         }
       ]
     ],

@@ -63,19 +63,23 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     outputRange: [THEME.colors.textPrimary, THEME.colors.success],
   });
 
+  const loadItem = useCallback(async () => {
+    try {
+      const data = await getOneTimeItemById(db, itemId);
+      setItem(data);
+      if (data) {
+        navigation.setOptions({ title: data.name });
+      }
+    } catch (error) {
+      console.error('加载物品详情失败', error);
+    }
+  }, [db, itemId, navigation]);
+
   useFocusEffect(
     useCallback(() => {
-      loadItem();
-    }, [itemId]),
+      void loadItem();
+    }, [loadItem]),
   );
-
-  async function loadItem() {
-    const data = await getOneTimeItemById(db, itemId);
-    setItem(data);
-    if (data) {
-      navigation.setOptions({ title: data.name });
-    }
-  }
 
   async function handleDelete() {
     Alert.alert('确认删除', `确定要删除“${item?.name}”吗？此操作不可撤销。`, [
@@ -171,7 +175,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     try {
       await pauseOneTimeItem(db, itemId, pauseDate);
       setPauseModalVisible(false);
-      loadItem();
+      await loadItem();
     } catch (e) {
       Alert.alert('错误', e instanceof Error ? e.message : '停用失败，请重试');
     } finally {
@@ -189,7 +193,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     try {
       await resumeOneTimeItem(db, itemId, resumeDate);
       setResumeModalVisible(false);
-      loadItem();
+      await loadItem();
     } catch (e) {
       Alert.alert('错误', e instanceof Error ? e.message : '恢复失败，请重试');
     } finally {
@@ -218,7 +222,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       await sellOneTimeItem(db, itemId, sellDate, priceNum);
       setSellModalVisible(false);
       setSellPrice('');
-      loadItem();
+      await loadItem();
     } catch (e) {
       Alert.alert('错误', e instanceof Error ? e.message : '售出失败，请重试');
     } finally {

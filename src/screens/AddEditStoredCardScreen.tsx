@@ -4,7 +4,7 @@
  * 输入：路由参数中的 storedCardId、defaultCardType。
  * 输出：保存或删除储值卡记录，必要时同步保存本地封面图片。
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -62,12 +62,20 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
   const [status, setStatus] = useState<'active' | 'archived'>('active');
   const [loading, setLoading] = useState(false);
 
+  const loadCardSafe = useCallback(async (id: number) => {
+    try {
+      await loadCard(id);
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '加载失败，请重试');
+    }
+  }, [db]);
+
   useEffect(() => {
     navigation.setOptions({ title: isEditing ? '编辑储值卡' : '新增储值卡' });
     if (isEditing && editId !== undefined) {
-      void loadCard(editId);
+      void loadCardSafe(editId);
     }
-  }, [editId, isEditing, navigation]);
+  }, [editId, isEditing, loadCardSafe, navigation]);
 
   async function loadCard(id: number) {
     const card = await getStoredCardById(db, id);
@@ -179,8 +187,8 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
 
       setOriginalImageUri(savedImageUri);
       navigation.goBack();
-    } catch {
-      Alert.alert('错误', '保存失败，请重试');
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '保存失败，请重试');
     } finally {
       setLoading(false);
     }
@@ -199,8 +207,8 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
             await deleteEntityImageAsync(originalImageUri);
             await deleteStoredCard(db, editId);
             navigation.goBack();
-          } catch {
-            Alert.alert('错误', '删除失败，请重试');
+          } catch (error) {
+            Alert.alert('错误', error instanceof Error ? error.message : '删除失败，请重试');
           }
         },
       },
@@ -213,8 +221,8 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
     try {
       await updateStoredCard(db, editId, { status: nextStatus });
       setStatus(nextStatus);
-    } catch {
-      Alert.alert('错误', '操作失败，请重试');
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '操作失败，请重试');
     }
   }
 

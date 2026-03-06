@@ -47,7 +47,7 @@ export async function createStoredCard(
       last_updated_date,
       reminder_days,
       status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       card.name,
       card.category,

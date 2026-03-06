@@ -43,7 +43,9 @@ export async function pickEntityImageFromLibraryAsync(): Promise<string | null> 
     mediaTypes: ['images'],
     allowsEditing: true,
     aspect: [1, 1],
-    quality: 0.85,
+    shape: 'rectangle',
+    defaultTab: 'photos',
+    quality: 1,
   });
 
   if (result.canceled || !result.assets?.[0]?.uri) {

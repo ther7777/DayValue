@@ -1,10 +1,37 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
+import { ensureCategoriesTable } from './categories';
 import { seedSampleData } from './seed';
 
+interface TableColumnInfo {
+  name: string;
+}
+
+async function getTableColumnNames(
+  db: SQLiteDatabase,
+  tableName: string,
+): Promise<Set<string>> {
+  const rows = await db.getAllAsync<TableColumnInfo>(`PRAGMA table_info(${tableName})`);
+  return new Set(rows.map((row) => row.name));
+}
+
+async function ensureColumn(
+  db: SQLiteDatabase,
+  tableName: string,
+  columnName: string,
+  definition: string,
+): Promise<void> {
+  const columns = await getTableColumnNames(db, tableName);
+  if (columns.has(columnName)) {
+    return;
+  }
+
+  await db.execAsync(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
+}
+
 /**
- * 初始化数据库：建表 +（开发期）按版本清理旧表
- * 用于 SQLiteProvider 的 onInit 回调
+ * Initialize database schema and apply supported migrations.
+ * Used by SQLiteProvider.onInit.
  */
 export async function initDB(db: SQLiteDatabase): Promise<void> {
   const SCHEMA_VERSION = 7;
@@ -13,20 +40,25 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
     const versionRow = await current.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
     const userVersion = versionRow?.user_version ?? 0;
 
-    // 开发期：表结构大改时直接清空旧数据，避免历史表结构导致运行时报错
     if (__DEV__ && userVersion !== SCHEMA_VERSION) {
       await current.execAsync(`
-          DROP TABLE IF EXISTS OneTimeItems;
-          DROP TABLE IF EXISTS Subscriptions;
-          DROP TABLE IF EXISTS StoredCards;
-          DROP TABLE IF EXISTS Categories;
-          DROP TABLE IF EXISTS one_time_items;
-          DROP TABLE IF EXISTS subscriptions;
-          DROP TABLE IF EXISTS stored_cards;
-          DROP TABLE IF EXISTS _meta;
-        `);
-    } else if (!__DEV__ && userVersion !== 0 && userVersion !== SCHEMA_VERSION && userVersion !== 4 && userVersion !== 5 && userVersion !== 6) {
-      // 非开发环境：不做破坏性迁移，避免误删用户数据
+        DROP TABLE IF EXISTS OneTimeItems;
+        DROP TABLE IF EXISTS Subscriptions;
+        DROP TABLE IF EXISTS StoredCards;
+        DROP TABLE IF EXISTS Categories;
+        DROP TABLE IF EXISTS one_time_items;
+        DROP TABLE IF EXISTS subscriptions;
+        DROP TABLE IF EXISTS stored_cards;
+        DROP TABLE IF EXISTS _meta;
+      `);
+    } else if (
+      !__DEV__
+      && userVersion !== 0
+      && userVersion !== SCHEMA_VERSION
+      && userVersion !== 4
+      && userVersion !== 5
+      && userVersion !== 6
+    ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
       );
@@ -48,18 +80,15 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         CREATE INDEX IF NOT EXISTS idx_categories_type ON Categories(type);
       `);
     } else if (userVersion === 5) {
-      // v6：一次性资产新增“激活天数”口径 + archived 原因（停用/售出）
       await current.execAsync(`
         ALTER TABLE OneTimeItems ADD COLUMN active_days INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE OneTimeItems ADD COLUMN active_start_date TEXT;
         ALTER TABLE OneTimeItems ADD COLUMN archived_reason TEXT;
 
-        -- 回填：active/unredeemed 默认从 buy_date 开始计“激活段”
         UPDATE OneTimeItems
         SET active_start_date = buy_date
         WHERE status IN ('active', 'unredeemed') AND (active_start_date IS NULL OR active_start_date = '');
 
-        -- 回填：archived 冻结激活天数（沿用旧口径 buy_date -> end_date）
         UPDATE OneTimeItems
         SET
           active_days = CASE
@@ -82,7 +111,6 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       `);
     }
 
-    // 一次性资产表（含“赎身”状态机）
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS OneTimeItems (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,7 +131,12 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         down_payment       REAL    DEFAULT 0,
         end_date           TEXT,
         CHECK(is_installment = 1 OR (installment_months IS NULL AND monthly_payment IS NULL)),
-        CHECK(is_installment = 0 OR (installment_months IS NOT NULL AND installment_months > 0 AND monthly_payment IS NOT NULL AND monthly_payment > 0)),
+        CHECK(is_installment = 0 OR (
+          installment_months IS NOT NULL
+          AND installment_months > 0
+          AND monthly_payment IS NOT NULL
+          AND monthly_payment > 0
+        )),
         CHECK(status != 'unredeemed' OR is_installment = 1),
         CHECK(status = 'archived' OR end_date IS NULL),
         CHECK(status != 'archived' OR end_date IS NOT NULL)
@@ -113,7 +146,6 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_one_time_items_buy_date ON OneTimeItems(buy_date);
     `);
 
-    // 周期订阅表
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS Subscriptions (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,7 +185,12 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_stored_cards_type ON StoredCards(card_type);
     `);
 
-    // 分类表：支持用户自定义分类与图标（按 type 区分物品/订阅）
+    // Some historical databases ended up with user_version advanced but the
+    // image_uri columns never actually added. Repair that state on every init.
+    await ensureColumn(current, 'OneTimeItems', 'image_uri', 'TEXT');
+    await ensureColumn(current, 'Subscriptions', 'image_uri', 'TEXT');
+    await ensureColumn(current, 'StoredCards', 'image_uri', 'TEXT');
+
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS Categories (
         id   TEXT NOT NULL,
@@ -166,35 +203,11 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_categories_type ON Categories(type);
     `);
 
-    // 写入默认分类：即便已有 seed 数据，也要保证分类表可用
-    await current.execAsync(`
-      INSERT OR IGNORE INTO Categories (id, name, icon, type) VALUES
-        ('digital',        '数码', '📱', 'item'),
-        ('computer',       '电脑', '💻', 'item'),
-        ('home',           '居家', '🏠', 'item'),
-        ('transport',      '出行', '🛵', 'item'),
-        ('clothing',       '服饰', '👕', 'item'),
-        ('entertainment',  '娱乐', '🎮', 'item'),
-        ('education',      '学习', '📚', 'item'),
-        ('sports',         '运动', '⚽', 'item'),
-        ('other',          '其他', '📦', 'item'),
-
-        ('software',       '软件', '💿', 'subscription'),
-        ('education',      '学习', '📚', 'subscription'),
-        ('entertainment',  '娱乐', '🎮', 'subscription'),
-        ('other',          '其他', '📦', 'subscription'),
-
-        ('beauty',         '美容', '💇', 'stored_card'),
-        ('fitness',        '健身', '🏋️', 'stored_card'),
-        ('food',           '餐饮', '🍔', 'stored_card'),
-        ('coffee',         '咖啡', '☕', 'stored_card'),
-        ('other',          '其他', '📦', 'stored_card');
-    `);
+    await ensureCategoriesTable(current);
 
     await current.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
   }
 
-  // withExclusiveTransactionAsync 不支持 web：在 web 上退化为普通事务（或顺序执行）
   if (Platform.OS === 'web') {
     await db.withTransactionAsync(async () => {
       await migrate(db);
@@ -205,6 +218,5 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
     });
   }
 
-  // 首次启动时插入示例数据
   await seedSampleData(db);
 }

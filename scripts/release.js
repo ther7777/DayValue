@@ -30,9 +30,33 @@ const https = require("https");
 const http = require("http");
 const { spawnSync } = require("child_process");
 
+function resolveCommandForPlatform(cmd) {
+  if (process.platform !== "win32" || path.extname(cmd)) {
+    return cmd;
+  }
+
+  const candidates = [`${cmd}.cmd`, `${cmd}.exe`, `${cmd}.bat`, cmd];
+  for (const candidate of candidates) {
+    const res = spawnSync("where.exe", [candidate], { stdio: "pipe", encoding: "utf8" });
+    if (res.status === 0) {
+      return candidate;
+    }
+  }
+
+  return cmd;
+}
+
 function spawnCrossPlatform(cmd, args, options = {}) {
   const { shell = false, ...restOptions } = options;
-  return spawnSync(cmd, args, { shell, ...restOptions });
+  const resolvedCmd = shell ? cmd : resolveCommandForPlatform(cmd);
+  if (!shell && process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedCmd)) {
+    return spawnSync("cmd.exe", ["/d", "/s", "/c", formatCommandForPrint(resolvedCmd, args)], {
+      shell: false,
+      ...restOptions,
+    });
+  }
+
+  return spawnSync(resolvedCmd, args, { shell, ...restOptions });
 }
 
 function parseArgs(argv) {

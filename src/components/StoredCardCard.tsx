@@ -29,6 +29,7 @@ import { StatusBadge } from './StatusBadge';
 import { BrutalButton } from './BrutalButton';
 import { PixelInput } from './PixelInput';
 import { CardShell } from './CardShell';
+import { EntityCover } from './EntityCover';
 
 interface StoredCardCardProps {
   card: StoredCard;
@@ -57,7 +58,14 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
     card.current_balance,
   );
 
+  // 折扣卡/等额储值：通常用户只会知道“当前还剩多少”，更适合默认走「设定剩余」
+  const isEqualValueAmountCard =
+    card.card_type === 'amount' &&
+    Math.abs(card.face_value - card.actual_paid) < 0.0001;
+  const recommendedAmountMode: AmountUpdateMode = isEqualValueAmountCard ? 'set' : 'deduct';
+
   const displayIcon = card.icon ?? categoryInfo.icon;
+  const imageUri = card.image_uri ?? null;
 
   // 计次卡：已使用次数 = 总次数 - 当前剩余
   const usedCount = card.face_value - card.current_balance;
@@ -125,7 +133,13 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.icon}>{displayIcon}</Text>
+            <EntityCover
+              imageUri={imageUri}
+              icon={displayIcon}
+              size={44}
+              iconSize={24}
+              backgroundColor={THEME.colors.warning + '20'}
+            />
             <View>
               <Text style={styles.name} numberOfLines={1}>{card.name}</Text>
               <Text style={styles.categoryLabel}>{categoryInfo.name}</Text>
@@ -179,6 +193,7 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
             <BrutalButton
               title="更新余额"
               onPress={() => {
+                setAmountMode(recommendedAmountMode);
                 setAmountModalVisible(true);
               }}
               variant="accent"
@@ -232,6 +247,11 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
                 ? `当前余额 ${formatCurrency(card.current_balance)}，输入本次消费金额`
                 : `总面值 ${formatCurrency(card.face_value)}，输入当前最新余额`}
             </Text>
+            {isEqualValueAmountCard && (
+              <Text style={styles.recommendHint}>
+                小提示：如果是折扣卡/等额储值卡，推荐用「设定剩余」直接填写商家显示的余额（不用自己算原价）。
+              </Text>
+            )}
 
             <PixelInput
               label={amountMode === 'deduct' ? '消费金额 (¥)' : '当前剩余 (¥)'}
@@ -281,9 +301,6 @@ const styles = StyleSheet.create({
     gap: THEME.spacing.sm,
     flex: 1,
     marginRight: THEME.spacing.sm,
-  },
-  icon: {
-    fontSize: 28,
   },
   name: {
     fontSize: THEME.fontSize.md,
@@ -420,7 +437,13 @@ const styles = StyleSheet.create({
   modeHint: {
     fontSize: THEME.fontSize.xs,
     color: THEME.colors.textSecondary,
+    marginBottom: THEME.spacing.xs,
+  },
+  recommendHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.primary,
     marginBottom: THEME.spacing.md,
+    lineHeight: 18,
   },
   modalActions: {
     flexDirection: 'row',

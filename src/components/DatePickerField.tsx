@@ -21,7 +21,15 @@ interface DatePickerFieldProps {
 export function DatePickerField({ label, value, onChange, style }: DatePickerFieldProps) {
   const [show, setShow] = useState(false);
 
-  const dateValue = value ? new Date(value) : new Date();
+  // 注意：new Date('YYYY-MM-DD') 会按 UTC 解析，部分时区会导致日期“偏移一天”。
+  // 这里显式按本地日期构造，确保 picker 初始值与展示一致。
+  const dateValue = value
+    ? (() => {
+      const [y, m, d] = value.split('-').map(Number);
+      if (!y || !m || !d) return new Date();
+      return new Date(y, m - 1, d);
+    })()
+    : new Date();
 
   const handleChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') setShow(false);
@@ -48,9 +56,13 @@ export function DatePickerField({ label, value, onChange, style }: DatePickerFie
         <DateTimePicker
           value={dateValue}
           mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          // Android 默认 calendar 容易让人误以为只能“按月翻”；spinner 对“跨年跳转”更直观。
+          display={Platform.OS === 'ios' ? 'spinner' : 'spinner'}
           onChange={handleChange}
         />
+      )}
+      {Platform.OS === 'android' && (
+        <Text style={styles.hint}>小技巧：滚动年份/月份可以快速跳转</Text>
       )}
     </View>
   );
@@ -81,5 +93,10 @@ const styles = StyleSheet.create({
   },
   icon: {
     fontSize: 18,
+  },
+  hint: {
+    marginTop: THEME.spacing.xs,
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
   },
 });

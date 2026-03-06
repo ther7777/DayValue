@@ -3,8 +3,9 @@
  * 公式：使用天数 = (endDate || 今天) - startDate + 1
  */
 export function calculateDaysUsed(startDate: string, endDate: string | null): number {
-  const start = new Date(startDate);
-  const end = endDate ? new Date(endDate) : new Date();
+  // 避免 new Date('YYYY-MM-DD') 按 UTC 解析导致的“日期偏移一天”
+  const start = parseISODate(startDate);
+  const end = endDate ? parseISODate(endDate) : new Date();
 
   start.setHours(0, 0, 0, 0);
   end.setHours(0, 0, 0, 0);
@@ -17,7 +18,8 @@ export function calculateDaysUsed(startDate: string, endDate: string | null): nu
 
 /**
  * 计算一次性物品的日均成本
- * 公式：日均成本 = (购买金额 - 残值) / 使用天数
+ * 公式：日均成本 = (购买金额 - 卖出价) / 激活天数
+ * 约定：未售出时卖出价 = 0
  */
 export function calculateDailyCost(
   price: number,
@@ -29,7 +31,30 @@ export function calculateDailyCost(
   return effectiveCost / daysUsed;
 }
 
-import type { BillingCycle } from '../types';
+import type { BillingCycle, OneTimeItem } from '../types';
+
+/**
+ * 计算一次性资产的“激活天数”（停用期间不增长）
+ *
+ * 约定：
+ * - active_days：已累计激活天数（不含当前激活段）
+ * - active_start_date：当前激活段起始日期（仅 active 时有效）
+ */
+export function calculateOneTimeItemActiveDays(
+  item: Pick<OneTimeItem, 'status' | 'buy_date' | 'end_date' | 'active_days' | 'active_start_date'>,
+): number {
+  const baseDays = typeof item.active_days === 'number' ? item.active_days : 0;
+  const startDate = item.active_start_date || item.buy_date;
+
+  if (item.status === 'active') {
+    return baseDays + calculateDaysUsed(startDate, null);
+  }
+
+  // archived：冻结激活天数；若历史数据未回填，则回退到旧口径
+  if (baseDays > 0) return baseDays;
+  if (item.end_date) return calculateDaysUsed(item.buy_date, item.end_date);
+  return calculateDaysUsed(item.buy_date, null);
+}
 
 /**
  * 计算周期订阅的日均成本

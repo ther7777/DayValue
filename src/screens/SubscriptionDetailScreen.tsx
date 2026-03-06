@@ -19,7 +19,8 @@ import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { BrutalButton, StatusBadge } from '../components';
+import { BrutalButton, EntityCover, StatusBadge } from '../components';
+import { deleteEntityImageAsync } from '../utils/entityImages';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SubscriptionDetail'>;
 
@@ -50,6 +51,7 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
+          await deleteEntityImageAsync(sub?.image_uri);
           await deleteSubscription(db, subscriptionId);
           navigation.goBack();
         },
@@ -80,6 +82,7 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
 
   const category = getCategoryInfo('subscription', sub.category ?? 'other');
   const icon = sub.icon ?? category.icon;
+  const imageUri = sub.image_uri ?? null;
   const dailyCost = calculateSubscriptionDailyCost(sub.cycle_price, sub.billing_cycle);
   const cycleLabel =
     sub.billing_cycle === 'monthly'
@@ -92,9 +95,14 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <View style={styles.iconBox}>
-            <Text style={styles.iconText}>{icon}</Text>
-          </View>
+          <EntityCover
+            imageUri={imageUri}
+            icon={icon}
+            size={52}
+            iconSize={28}
+            backgroundColor={THEME.colors.accentLight + '30'}
+            style={styles.iconBox}
+          />
           <View style={styles.headerInfo}>
             <Text style={styles.name}>{sub.name}</Text>
             <Text style={styles.categoryText}>{category.name}</Text>
@@ -219,7 +227,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: THEME.spacing.md,
   },
-  iconText: { fontSize: 28 },
   headerInfo: { flex: 1 },
   name: {
     fontSize: THEME.fontSize.xl,

@@ -8,18 +8,19 @@ import {
   StyleSheet,
   Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList, OneTimeItem, Subscription, StoredCard } from '../types';
 import { getAllOneTimeItems, getAllSubscriptions, getAllStoredCards } from '../database';
 import {
-  calculateDaysUsed,
   calculateDailyCost,
   calculateSubscriptionDailyCost,
   calculateDailyDebt,
   calculateStoredPrincipal,
+  calculateOneTimeItemActiveDays,
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
@@ -29,6 +30,13 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
 type TabKey = 'assets' | 'debts' | 'stored_cards';
 type DebtListItem = OneTimeItem | Subscription;
+type DashboardChrome = {
+  backgroundColor: string;
+  borderColor: string;
+  subtitleColor?: string;
+  costColor?: string;
+  hintColor?: string;
+};
 
 function isSubscription(item: DebtListItem): item is Subscription {
   return 'cycle_price' in item;
@@ -36,6 +44,7 @@ function isSubscription(item: DebtListItem): item is Subscription {
 
 export function DashboardScreen({ navigation }: Props) {
   const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabKey>('assets');
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -82,8 +91,9 @@ export function DashboardScreen({ navigation }: Props) {
 
   const totalAssetDailyCost = useMemo(() => {
     return activeItems.reduce((sum, item) => {
-      const days = calculateDaysUsed(item.buy_date, item.end_date);
-      return sum + calculateDailyCost(item.total_price, item.salvage_value, days);
+      const days = calculateOneTimeItemActiveDays(item);
+      // “卖出价”只在售出时记录；在用资产默认按 0 计算
+      return sum + calculateDailyCost(item.total_price, 0, days);
     }, 0);
   }, [activeItems]);
 
@@ -131,7 +141,14 @@ export function DashboardScreen({ navigation }: Props) {
       const sections: { title: string; data: OneTimeItem[] }[] = [];
       sections.push({ title: '在用资产', data: activeItems });
       if (showArchived) {
-        sections.push({ title: '已隐藏', data: archivedItems });
+        const paused = archivedItems.filter(
+          i => (i.archived_reason ?? (i.salvage_value > 0 ? 'sold' : 'paused')) !== 'sold',
+        );
+        const sold = archivedItems.filter(
+          i => (i.archived_reason ?? (i.salvage_value > 0 ? 'sold' : 'paused')) === 'sold',
+        );
+        if (paused.length > 0) sections.push({ title: `已停用（${paused.length}）`, data: paused });
+        if (sold.length > 0) sections.push({ title: `已售出（${sold.length}）`, data: sold });
       }
       return sections;
     },
@@ -145,15 +162,44 @@ export function DashboardScreen({ navigation }: Props) {
     return sections;
   }, [unredeemedItems, activeSubs]);
 
+  const chrome = useMemo<DashboardChrome>(() => {
+    if (activeTab === 'debts') {
+      return {
+        backgroundColor: '#E17055',
+        borderColor: '#C56B4B',
+        subtitleColor: '#FFD8CC',
+      };
+    }
+    if (activeTab === 'stored_cards') {
+      return {
+        backgroundColor: '#B8860B',
+        borderColor: '#856404',
+        subtitleColor: '#FFE89A',
+        costColor: '#FFE066',
+        hintColor: '#FFE89ACC',
+      };
+    }
+    return {
+      backgroundColor: THEME.colors.primary,
+      borderColor: THEME.colors.borderDark,
+    };
+  }, [activeTab]);
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <StatusBar style="light" translucent backgroundColor="transparent" animated />
       <View style={styles.container}>
         {/* 顶部 Hero 区域 - 跟随 Tab 切换主题 */}
-        <View style={[
-          styles.hero,
-          activeTab === 'debts' && styles.heroDebt,
-          activeTab === 'stored_cards' && styles.heroStored,
-        ]}>
+        <View
+          style={[
+            styles.hero,
+            {
+              backgroundColor: chrome.backgroundColor,
+              borderBottomColor: chrome.borderColor,
+              paddingTop: insets.top + THEME.spacing.xl,
+            },
+          ]}
+        >
           <View style={styles.heroTitleRow}>
             <Text style={styles.heroTitle}>DayValue</Text>
             <View style={styles.heroActions}>
@@ -255,7 +301,7 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.7}
           >
             <Text style={styles.archiveToggleText}>
-              {showArchived ? '收起' : '显示'}已隐藏（{archivedItems.length}）
+              {showArchived ? '收起' : '显示'}停用/售出（{archivedItems.length}）
             </Text>
           </TouchableOpacity>
         )}
@@ -463,10 +509,10 @@ export function DashboardScreen({ navigation }: Props) {
                 </View>
                 <Text style={styles.helpBody}>
                   <Text style={{ fontWeight: 'bold', color: '#1A1A2E' }}>已全款买下的物品</Text>
-                  {'。总价已锁定，使用天数越长，每天的平均成本越低。数字不断下降，代表你正在把好东西用到极致。'}
+                  {'。总价已锁定，激活天数越长，每天的平均成本越低。停用期间不计入激活天数，也不会计入首页统计。'}
                 </Text>
                 <View style={styles.helpFormula}>
-                  <Text style={styles.helpFormulaText}>日均成本 = (总价 − 残值) ÷ 使用天数</Text>
+                  <Text style={styles.helpFormulaText}>日均成本 = (总价 − 卖出价) ÷ 激活天数</Text>
                 </View>
               </View>
 

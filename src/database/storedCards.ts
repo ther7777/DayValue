@@ -39,6 +39,7 @@ export async function createStoredCard(
       name,
       category,
       icon,
+      image_uri,
       card_type,
       actual_paid,
       face_value,
@@ -51,6 +52,7 @@ export async function createStoredCard(
       card.name,
       card.category,
       card.icon,
+      card.image_uri ?? null,
       card.card_type,
       card.actual_paid,
       card.face_value,
@@ -75,6 +77,7 @@ export async function updateStoredCard(
   if (card.name !== undefined) { fields.push('name = ?'); values.push(card.name); }
   if (card.category !== undefined) { fields.push('category = ?'); values.push(card.category); }
   if (card.icon !== undefined) { fields.push('icon = ?'); values.push(card.icon); }
+  if (card.image_uri !== undefined) { fields.push('image_uri = ?'); values.push(card.image_uri ?? null); }
   if (card.card_type !== undefined) { fields.push('card_type = ?'); values.push(card.card_type); }
   if (card.actual_paid !== undefined) { fields.push('actual_paid = ?'); values.push(card.actual_paid); }
   if (card.face_value !== undefined) { fields.push('face_value = ?'); values.push(card.face_value); }

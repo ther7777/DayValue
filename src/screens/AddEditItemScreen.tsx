@@ -1,30 +1,33 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
   Alert,
-  TouchableOpacity,
-  StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, CategoryInfo, OneTimeItemStatus } from '../types';
-import { getOneTimeItemById, createOneTimeItem, updateOneTimeItem } from '../database';
-import { getTodayString } from '../utils/formatters';
-import { THEME } from '../utils/constants';
+
+import type { CategoryInfo, OneTimeItemStatus, RootStackParamList } from '../types';
+import { createOneTimeItem, getOneTimeItemById, updateOneTimeItem } from '../database';
 import {
   BrutalButton,
-  PixelInput,
   CategoryPicker,
   DatePickerField,
+  ImagePickerField,
+  PixelInput,
 } from '../components';
+import { THEME } from '../utils/constants';
+import { getTodayString } from '../utils/formatters';
+import { calculateIRR, calculateInstallmentPremium } from '../utils/calculations';
 import {
-  calculateIRR,
-  calculateInstallmentPremium,
-} from '../utils/calculations';
+  pickEntityImageFromLibraryAsync,
+  resolveEntityImageForSaveAsync,
+} from '../utils/entityImages';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditItem'>;
 
@@ -37,9 +40,10 @@ export function AddEditItemScreen({ route, navigation }: Props) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('digital');
   const [icon, setIcon] = useState('📱');
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
   const [totalPrice, setTotalPrice] = useState('');
   const [buyDate, setBuyDate] = useState(getTodayString());
-  const [salvageValue, setSalvageValue] = useState('');
 
   const [isInstallment, setIsInstallment] = useState(defaultIsInstallment);
   const [installmentMonths, setInstallmentMonths] = useState('');
@@ -47,28 +51,42 @@ export function AddEditItemScreen({ route, navigation }: Props) {
   const [downPayment, setDownPayment] = useState('');
 
   const [originalStatus, setOriginalStatus] = useState<OneTimeItemStatus | null>(null);
+  const [lockedSalvageValue, setLockedSalvageValue] = useState(0);
+  const [lockedIsSold, setLockedIsSold] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 实时计算溢价和 IRR
   const irrWarning = useMemo(() => {
     if (!isInstallment) return null;
-    const price  = parseFloat(totalPrice);
-    const dp     = parseFloat(downPayment) || 0;
-    const mp     = parseFloat(monthlyPayment);
+
+    const price = parseFloat(totalPrice);
+    const dp = parseFloat(downPayment) || 0;
+    const mp = parseFloat(monthlyPayment);
     const months = parseInt(installmentMonths, 10);
-    if (isNaN(price) || isNaN(mp) || isNaN(months) || price <= 0 || mp <= 0 || months <= 0) return null;
+
+    if (
+      Number.isNaN(price) ||
+      Number.isNaN(mp) ||
+      Number.isNaN(months) ||
+      price <= 0 ||
+      mp <= 0 ||
+      months <= 0
+    ) {
+      return null;
+    }
+
     const premium = calculateInstallmentPremium(price, dp, mp, months);
     if (premium <= 0) return null;
+
     const irr = calculateIRR(price, dp, mp, months);
     return { premium, irr };
-  }, [isInstallment, totalPrice, downPayment, monthlyPayment, installmentMonths]);
+  }, [downPayment, installmentMonths, isInstallment, monthlyPayment, totalPrice]);
 
   useEffect(() => {
     navigation.setOptions({ title: isEditing ? '编辑物品' : '新增物品' });
     if (isEditing && editId !== undefined) {
-      loadItem(editId);
+      void loadItem(editId);
     }
-  }, [db, editId, isEditing, navigation]);
+  }, [editId, isEditing, navigation]);
 
   async function loadItem(id: number) {
     const item = await getOneTimeItemById(db, id);
@@ -77,15 +95,18 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     setName(item.name);
     setCategory(item.category ?? 'other');
     setIcon(item.icon ?? '📦');
+    setImageUri(item.image_uri ?? null);
+    setOriginalImageUri(item.image_uri ?? null);
     setTotalPrice(String(item.total_price));
     setBuyDate(item.buy_date);
-    setSalvageValue(item.salvage_value ? String(item.salvage_value) : '');
 
     setIsInstallment(item.is_installment === 1);
     setInstallmentMonths(item.installment_months ? String(item.installment_months) : '');
     setMonthlyPayment(item.monthly_payment ? String(item.monthly_payment) : '');
     setDownPayment(item.down_payment ? String(item.down_payment) : '');
     setOriginalStatus(item.status);
+    setLockedSalvageValue(item.salvage_value ?? 0);
+    setLockedIsSold(item.status === 'archived' && item.archived_reason === 'sold');
   }
 
   function handleCategoryChange(cat: CategoryInfo) {
@@ -93,19 +114,23 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     setIcon(cat.icon);
   }
 
+  async function handlePickImage() {
+    try {
+      const selectedUri = await pickEntityImageFromLibraryAsync();
+      if (selectedUri) {
+        setImageUri(selectedUri);
+      }
+    } catch (error) {
+      Alert.alert('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
+    }
+  }
+
   function resolveNextStatus(): OneTimeItemStatus {
-    // 已隐藏：不允许在此页改变状态（避免破坏"锁定成本"约束）
     if (originalStatus === 'archived') return 'archived';
-
-    // 已赎身/在用：默认保持 active（赎身通过详情页动作触发）
     if (originalStatus === 'active') return 'active';
-
-    // 未赎身：如果用户关闭“分期”，则自动转为 active（否则会违反约束）
     if (originalStatus === 'unredeemed') {
       return isInstallment ? 'unredeemed' : 'active';
     }
-
-    // 新增：分期默认 unredeemed，全款默认 active
     return isInstallment ? 'unredeemed' : 'active';
   }
 
@@ -114,40 +139,51 @@ export function AddEditItemScreen({ route, navigation }: Props) {
       Alert.alert('提示', '请输入物品名称');
       return;
     }
+
     const totalPriceNum = parseFloat(totalPrice);
-    if (isNaN(totalPriceNum) || totalPriceNum <= 0) {
+    if (Number.isNaN(totalPriceNum) || totalPriceNum <= 0) {
       Alert.alert('提示', '请输入有效的总金额');
       return;
     }
-    const salvageNum = salvageValue ? parseFloat(salvageValue) : 0;
-    if (isNaN(salvageNum) || salvageNum < 0) {
-      Alert.alert('提示', '残值不能为负数');
-      return;
-    }
-    if (salvageNum > totalPriceNum) {
-      Alert.alert('🤨 残值溢出', '转手价比买入价还高？那你是赚了不是亏了，检查一下数字吧。');
+
+    if (
+      isEditing &&
+      originalStatus === 'archived' &&
+      lockedSalvageValue > 0 &&
+      totalPriceNum < lockedSalvageValue
+    ) {
+      Alert.alert(
+        '提示',
+        lockedIsSold
+          ? `已售出资产的原价不能低于卖出价（¥${lockedSalvageValue.toFixed(2)}）`
+          : `该资产已记录残值或卖出价（¥${lockedSalvageValue.toFixed(2)}），原价不能低于这个数值`,
+      );
       return;
     }
 
     let monthsNum: number | null = null;
     let monthlyPaymentNum: number | null = null;
     let downPaymentNum = 0;
+
     if (isInstallment) {
-      const m = parseInt(installmentMonths, 10);
-      if (isNaN(m) || m <= 0) {
+      const nextMonths = parseInt(installmentMonths, 10);
+      if (Number.isNaN(nextMonths) || nextMonths <= 0) {
         Alert.alert('提示', '请输入有效的分期月数');
         return;
       }
-      const p = parseFloat(monthlyPayment);
-      if (isNaN(p) || p <= 0) {
+
+      const nextMonthlyPayment = parseFloat(monthlyPayment);
+      if (Number.isNaN(nextMonthlyPayment) || nextMonthlyPayment <= 0) {
         Alert.alert('提示', '请输入有效的月供金额');
         return;
       }
-      monthsNum = m;
-      monthlyPaymentNum = p;
-      downPaymentNum = downPayment ? (parseFloat(downPayment) || 0) : 0;
+
+      monthsNum = nextMonths;
+      monthlyPaymentNum = nextMonthlyPayment;
+      downPaymentNum = downPayment ? parseFloat(downPayment) || 0 : 0;
+
       if (downPaymentNum >= totalPriceNum) {
-        Alert.alert('😯 首付都够全款了', '首付≥总价，说明你已经付得起全款了，关掉分期开关吧！');
+        Alert.alert('提示', '首付已经大于等于总价，建议直接关闭分期开关');
         return;
       }
     }
@@ -156,35 +192,33 @@ export function AddEditItemScreen({ route, navigation }: Props) {
 
     setLoading(true);
     try {
+      const savedImageUri = await resolveEntityImageForSaveAsync({
+        currentImageUri: originalImageUri,
+        nextImageUri: imageUri,
+        type: 'item',
+      });
+
+      const payload = {
+        name: name.trim(),
+        category,
+        icon,
+        image_uri: savedImageUri,
+        total_price: totalPriceNum,
+        buy_date: buyDate,
+        is_installment: isInstallment ? 1 : 0,
+        installment_months: isInstallment ? monthsNum : null,
+        monthly_payment: isInstallment ? monthlyPaymentNum : null,
+        down_payment: isInstallment ? downPaymentNum : 0,
+        status: nextStatus,
+      };
+
       if (isEditing && editId !== undefined) {
-        await updateOneTimeItem(db, editId, {
-          name: name.trim(),
-          category,
-          icon,
-          total_price: totalPriceNum,
-          buy_date: buyDate,
-          salvage_value: salvageNum,
-          is_installment: isInstallment ? 1 : 0,
-          installment_months: isInstallment ? monthsNum : null,
-          monthly_payment: isInstallment ? monthlyPaymentNum : null,
-          down_payment: isInstallment ? downPaymentNum : 0,
-          status: nextStatus,
-        });
+        await updateOneTimeItem(db, editId, payload);
       } else {
-        await createOneTimeItem(db, {
-          name: name.trim(),
-          category,
-          icon,
-          total_price: totalPriceNum,
-          buy_date: buyDate,
-          salvage_value: salvageNum,
-          is_installment: isInstallment ? 1 : 0,
-          installment_months: isInstallment ? monthsNum : null,
-          monthly_payment: isInstallment ? monthlyPaymentNum : null,
-          down_payment: isInstallment ? downPaymentNum : 0,
-          status: nextStatus,
-        });
+        await createOneTimeItem(db, payload);
       }
+
+      setOriginalImageUri(savedImageUri);
       navigation.goBack();
     } catch {
       Alert.alert('错误', '保存失败，请重试');
@@ -212,8 +246,16 @@ export function AddEditItemScreen({ route, navigation }: Props) {
 
         <CategoryPicker type="item" selectedId={category} onSelect={handleCategoryChange} />
 
+        <ImagePickerField
+          label="封面图片（可选）"
+          imageUri={imageUri}
+          fallbackIcon={icon}
+          onPick={handlePickImage}
+          onRemove={() => setImageUri(null)}
+        />
+
         <PixelInput
-          label="总金额 (¥)"
+          label="总金额（¥）"
           value={totalPrice}
           onChangeText={setTotalPrice}
           placeholder="0.00"
@@ -226,35 +268,28 @@ export function AddEditItemScreen({ route, navigation }: Props) {
           onChange={setBuyDate}
         />
 
-        {/* 分期开关 */}
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>是否分期 / 先用后付</Text>
           <View style={styles.toggleRow}>
-            <TouchableOpacity
-              style={[styles.toggleBtn, !isInstallment && styles.toggleActive]}
+            <InstallmentButton
+              title="否（全款）"
+              active={!isInstallment}
+              danger={false}
               onPress={() => setIsInstallment(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.toggleText, !isInstallment && styles.toggleTextActive]}>
-                否（全款）
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleBtn, isInstallment && styles.toggleActiveDanger]}
+            />
+            <InstallmentButton
+              title="是（分期）"
+              active={isInstallment}
+              danger
               onPress={() => setIsInstallment(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.toggleText, isInstallment && styles.toggleTextActiveDanger]}>
-                是（分期）
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
-        {isInstallment && (
+        {isInstallment ? (
           <>
             <PixelInput
-              label="首付 (¥，可为 0)"
+              label="首付（¥，可为 0）"
               value={downPayment}
               onChangeText={setDownPayment}
               placeholder="0.00"
@@ -268,35 +303,26 @@ export function AddEditItemScreen({ route, navigation }: Props) {
               keyboardType="number-pad"
             />
             <PixelInput
-              label="月供 (¥)"
+              label="月供（¥）"
               value={monthlyPayment}
               onChangeText={setMonthlyPayment}
               placeholder="0.00"
               keyboardType="decimal-pad"
             />
 
-            {/* 实时血本警示 */}
-            {irrWarning && (
+            {irrWarning ? (
               <View style={styles.irrWarning}>
-                <Text style={styles.irrWarningTitle}>⚠️ 分期血本警示</Text>
+                <Text style={styles.irrWarningTitle}>分期血本警示</Text>
                 <Text style={styles.irrWarningText}>
-                  相比全款，你将额外多花{' '}
-                  <Text style={styles.irrWarningHighlight}>¥{irrWarning.premium.toFixed(2)}</Text>
-                  {'，折合真实年化利率 '}
-                  <Text style={styles.irrWarningHighlight}>{irrWarning.irr.toFixed(1)}%</Text>
+                  相比全款，你将额外多花
+                  <Text style={styles.irrWarningHighlight}> ¥{irrWarning.premium.toFixed(2)}</Text>
+                  ，折合真实年化利率
+                  <Text style={styles.irrWarningHighlight}> {irrWarning.irr.toFixed(1)}%</Text>
                 </Text>
               </View>
-            )}
+            ) : null}
           </>
-        )}
-
-        <PixelInput
-          label="残值 / 预估转卖价 (¥，可选)"
-          value={salvageValue}
-          onChangeText={setSalvageValue}
-          placeholder="0.00"
-          keyboardType="decimal-pad"
-        />
+        ) : null}
 
         <View style={styles.actions}>
           <BrutalButton
@@ -317,6 +343,38 @@ export function AddEditItemScreen({ route, navigation }: Props) {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+function InstallmentButton({
+  title,
+  active,
+  danger,
+  onPress,
+}: {
+  title: string;
+  active: boolean;
+  danger: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.toggleBtn,
+        active && (danger ? styles.toggleActiveDanger : styles.toggleActive),
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Text
+        style={[
+          styles.toggleText,
+          active && (danger ? styles.toggleTextActiveDanger : styles.toggleTextActive),
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
   );
 }
 

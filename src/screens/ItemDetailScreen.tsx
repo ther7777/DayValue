@@ -15,20 +15,23 @@ import type { RootStackParamList, OneTimeItem } from '../types';
 import {
   getOneTimeItemById,
   deleteOneTimeItem,
-  archiveOneTimeItem,
+  pauseOneTimeItem,
+  resumeOneTimeItem,
+  sellOneTimeItem,
   redeemOneTimeItem,
 } from '../database';
 import {
-  calculateDaysUsed,
   calculateDailyCost,
   calculateDailyDebt,
   calculateIRR,
   calculateInstallmentPremium,
+  calculateOneTimeItemActiveDays,
 } from '../utils/calculations';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { BrutalButton, PixelInput, DatePickerField, StatusBadge } from '../components';
+import { BrutalButton, EntityCover, PixelInput, DatePickerField, StatusBadge } from '../components';
+import { deleteEntityImageAsync } from '../utils/entityImages';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ItemDetail'>;
 
@@ -38,10 +41,15 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const { itemId } = route.params;
   const [item, setItem] = useState<OneTimeItem | null>(null);
 
-  // 隐藏弹窗
-  const [archiveModalVisible, setArchiveModalVisible] = useState(false);
-  const [archiveDate, setArchiveDate] = useState(getTodayString());
-  const [archiveSalvage, setArchiveSalvage] = useState('');
+  // 停用 / 再用 / 售出弹窗
+  const [pauseModalVisible, setPauseModalVisible] = useState(false);
+  const [pauseDate, setPauseDate] = useState(getTodayString());
+  const [resumeModalVisible, setResumeModalVisible] = useState(false);
+  const [resumeDate, setResumeDate] = useState(getTodayString());
+  const [sellModalVisible, setSellModalVisible] = useState(false);
+  const [sellDate, setSellDate] = useState(getTodayString());
+  const [sellPrice, setSellPrice] = useState('');
+  const [statusBusy, setStatusBusy] = useState(false);
 
   // 赎身成功动画弹窗
   const [redeemModalVisible, setRedeemModalVisible] = useState(false);
@@ -76,6 +84,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
+          await deleteEntityImageAsync(item?.image_uri);
           await deleteOneTimeItem(db, itemId);
           navigation.goBack();
         },
@@ -152,19 +161,69 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     ]);
   }
 
-  async function handleArchive() {
-    const salvageNum = archiveSalvage ? parseFloat(archiveSalvage) : 0;
-    if (isNaN(salvageNum) || salvageNum < 0) {
-      Alert.alert('提示', '请输入有效的残值');
+  async function handlePause() {
+    if (!item || statusBusy) return;
+    if (pauseDate > getTodayString()) {
+      Alert.alert('提示', '停用日期不能晚于今天');
       return;
     }
-    if (item && salvageNum > item.total_price) {
-      Alert.alert('🤨 残值溢出', '转手价比买入价还高？那你是赚了不是亏了，检查一下数字吧。');
+    setStatusBusy(true);
+    try {
+      await pauseOneTimeItem(db, itemId, pauseDate);
+      setPauseModalVisible(false);
+      loadItem();
+    } catch (e) {
+      Alert.alert('错误', e instanceof Error ? e.message : '停用失败，请重试');
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
+  async function handleResume() {
+    if (!item || statusBusy) return;
+    if (resumeDate > getTodayString()) {
+      Alert.alert('提示', '恢复日期不能晚于今天');
       return;
     }
-    await archiveOneTimeItem(db, itemId, archiveDate, salvageNum);
-    setArchiveModalVisible(false);
-    loadItem();
+    setStatusBusy(true);
+    try {
+      await resumeOneTimeItem(db, itemId, resumeDate);
+      setResumeModalVisible(false);
+      loadItem();
+    } catch (e) {
+      Alert.alert('错误', e instanceof Error ? e.message : '恢复失败，请重试');
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
+  async function handleSell() {
+    if (!item || statusBusy) return;
+    if (sellDate > getTodayString()) {
+      Alert.alert('提示', '售出日期不能晚于今天');
+      return;
+    }
+    const priceNum = parseFloat(sellPrice);
+    if (isNaN(priceNum) || priceNum < 0) {
+      Alert.alert('提示', '请输入有效的卖出价（≥ 0）');
+      return;
+    }
+    if (priceNum > item.total_price) {
+      Alert.alert('提示', '卖出价不能高于原价');
+      return;
+    }
+
+    setStatusBusy(true);
+    try {
+      await sellOneTimeItem(db, itemId, sellDate, priceNum);
+      setSellModalVisible(false);
+      setSellPrice('');
+      loadItem();
+    } catch (e) {
+      Alert.alert('错误', e instanceof Error ? e.message : '售出失败，请重试');
+    } finally {
+      setStatusBusy(false);
+    }
   }
 
   if (!item) {
@@ -177,13 +236,19 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
   const category = getCategoryInfo('item', item.category ?? 'other');
   const icon = item.icon ?? category.icon;
+  const imageUri = item.image_uri ?? null;
 
   const isUnredeemed = item.status === 'unredeemed';
   const isActive = item.status === 'active';
   const isArchived = item.status === 'archived';
 
-  const daysUsed = calculateDaysUsed(item.buy_date, item.end_date);
-  const dailyCost = calculateDailyCost(item.total_price, item.salvage_value, daysUsed);
+  const archivedReason =
+    item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+  const isSold = isArchived && archivedReason === 'sold';
+  const isPaused = isArchived && archivedReason !== 'sold';
+
+  const activeDays = calculateOneTimeItemActiveDays(item);
+  const dailyCost = calculateDailyCost(item.total_price, isSold ? item.salvage_value : 0, activeDays);
   const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
 
   // 分期溢价和 IRR——仅适用于 unredeemed 物品
@@ -209,14 +274,28 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       {/* 顶部卡片 */}
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <View style={styles.iconBox}>
-            <Text style={styles.iconText}>{icon}</Text>
-          </View>
+          <EntityCover
+            imageUri={imageUri}
+            icon={icon}
+            size={52}
+            iconSize={28}
+            backgroundColor={THEME.colors.primaryLight + '30'}
+            style={styles.iconBox}
+          />
           <View style={styles.headerInfo}>
             <Text style={styles.name}>{item.name}</Text>
             <Text style={styles.categoryText}>{category.name}</Text>
           </View>
-          <StatusBadge status={item.status} />
+          <StatusBadge
+            status={item.status}
+            labelOverride={
+              isArchived
+                ? isSold
+                  ? '已售出'
+                  : '已停用'
+                : undefined
+            }
+          />
         </View>
       </View>
 
@@ -234,7 +313,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
           {formatCurrency(isUnredeemed ? dailyDebt : dailyCost)}
         </Text>
         {!isUnredeemed && (
-          <Text style={styles.highlightSub}>已使用 {daysUsed} 天</Text>
+          <Text style={styles.highlightSub}>激活 {activeDays} 天</Text>
         )}
       </View>
 
@@ -252,14 +331,23 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
         {!isUnredeemed && (
           <>
-            <InfoRow label="残值" value={formatCurrency(item.salvage_value)} />
-            <InfoRow label="使用天数" value={`${daysUsed} 天`} />
+            <InfoRow label="激活天数" value={`${activeDays} 天`} />
+            {isSold && (
+              <InfoRow label="卖出价" value={formatCurrency(item.salvage_value)} />
+            )}
           </>
         )}
 
-        {isArchived && (
+        {isPaused && (
           <InfoRow
             label="停用日期"
+            value={item.end_date ? formatDate(item.end_date) : '-'}
+          />
+        )}
+
+        {isSold && (
+          <InfoRow
+            label="售出日期"
             value={item.end_date ? formatDate(item.end_date) : '-'}
           />
         )}
@@ -306,10 +394,39 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         )}
 
         {isActive && (
+          <>
+            <BrutalButton
+              title="停用"
+              onPress={() => {
+                setPauseDate(getTodayString());
+                setPauseModalVisible(true);
+              }}
+              variant="accent"
+              size="md"
+              style={styles.actionBtn}
+            />
+            <BrutalButton
+              title="售出"
+              onPress={() => {
+                setSellDate(getTodayString());
+                setSellPrice('');
+                setSellModalVisible(true);
+              }}
+              variant="danger"
+              size="md"
+              style={styles.actionBtn}
+            />
+          </>
+        )}
+
+        {isPaused && (
           <BrutalButton
-            title="停用 / 单出"
-            onPress={() => setArchiveModalVisible(true)}
-            variant="accent"
+            title="恢复使用"
+            onPress={() => {
+              setResumeDate(getTodayString());
+              setResumeModalVisible(true);
+            }}
+            variant="success"
             size="md"
             style={styles.actionBtn}
           />
@@ -346,36 +463,105 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       </Modal>
 
       {/* 停用弹窗 */}
-      <Modal visible={archiveModalVisible} transparent animationType="fade">
+      <Modal visible={pauseModalVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>停用物品</Text>
+            <Text style={styles.modalTitle}>停用资产</Text>
             <Text style={styles.modalDesc}>
-              停用后将锁定成本，请填写停用日期与残值（若已出手）。
+              停用后将暂停「激活天数」累计，并从首页「日均成本」统计中移除；之后可随时恢复使用。
             </Text>
             <DatePickerField
               label="停用日期"
-              value={archiveDate}
-              onChange={setArchiveDate}
-            />
-            <PixelInput
-              label="残值 / 预估转卖价 (¥)"
-              value={archiveSalvage}
-              onChangeText={setArchiveSalvage}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
+              value={pauseDate}
+              onChange={setPauseDate}
             />
             <View style={styles.modalActions}>
               <BrutalButton
                 title="确认停用"
-                onPress={handleArchive}
+                onPress={handlePause}
+                loading={statusBusy}
                 variant="accent"
                 size="md"
                 style={styles.modalBtn}
               />
               <BrutalButton
                 title="取消"
-                onPress={() => setArchiveModalVisible(false)}
+                onPress={() => setPauseModalVisible(false)}
+                variant="outline"
+                size="md"
+                style={styles.modalBtn}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 恢复使用弹窗 */}
+      <Modal visible={resumeModalVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>恢复使用</Text>
+            <Text style={styles.modalDesc}>
+              恢复后将从所选日期开始继续累计「激活天数」，并重新计入首页统计。
+            </Text>
+            <DatePickerField
+              label="恢复日期"
+              value={resumeDate}
+              onChange={setResumeDate}
+            />
+            <View style={styles.modalActions}>
+              <BrutalButton
+                title="确认恢复"
+                onPress={handleResume}
+                loading={statusBusy}
+                variant="success"
+                size="md"
+                style={styles.modalBtn}
+              />
+              <BrutalButton
+                title="取消"
+                onPress={() => setResumeModalVisible(false)}
+                variant="outline"
+                size="md"
+                style={styles.modalBtn}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 售出弹窗 */}
+      <Modal visible={sellModalVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>售出资产</Text>
+            <Text style={styles.modalDesc}>
+              售出后不可恢复，将记录卖出日期与卖出价（卖出价 ≤ 原价）。
+            </Text>
+            <DatePickerField
+              label="售出日期"
+              value={sellDate}
+              onChange={setSellDate}
+            />
+            <PixelInput
+              label="卖出价 (¥)"
+              value={sellPrice}
+              onChangeText={setSellPrice}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+            />
+            <View style={styles.modalActions}>
+              <BrutalButton
+                title="确认售出"
+                onPress={handleSell}
+                loading={statusBusy}
+                variant="danger"
+                size="md"
+                style={styles.modalBtn}
+              />
+              <BrutalButton
+                title="取消"
+                onPress={() => setSellModalVisible(false)}
                 variant="outline"
                 size="md"
                 style={styles.modalBtn}
@@ -457,7 +643,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: THEME.spacing.md,
   },
-  iconText: { fontSize: 28 },
   headerInfo: { flex: 1 },
   name: {
     fontSize: THEME.fontSize.xl,

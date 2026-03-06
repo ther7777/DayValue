@@ -1,30 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
   Alert,
-  TouchableOpacity,
-  StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, CategoryInfo, BillingCycle } from '../types';
-import {
-  getSubscriptionById,
-  createSubscription,
-  updateSubscription,
-} from '../database';
-import { getTodayString } from '../utils/formatters';
-import { THEME } from '../utils/constants';
+
+import type { BillingCycle, CategoryInfo, RootStackParamList } from '../types';
+import { createSubscription, getSubscriptionById, updateSubscription } from '../database';
 import {
   BrutalButton,
-  PixelInput,
   CategoryPicker,
   DatePickerField,
+  ImagePickerField,
+  PixelInput,
 } from '../components';
+import { THEME } from '../utils/constants';
+import { getTodayString } from '../utils/formatters';
+import {
+  pickEntityImageFromLibraryAsync,
+  resolveEntityImageForSaveAsync,
+} from '../utils/entityImages';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditSubscription'>;
 
@@ -36,6 +38,8 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('software');
   const [icon, setIcon] = useState('💿');
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const [cyclePrice, setCyclePrice] = useState('');
   const [startDate, setStartDate] = useState(getTodayString());
@@ -44,9 +48,9 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
   useEffect(() => {
     navigation.setOptions({ title: isEditing ? '编辑订阅' : '新增订阅' });
     if (isEditing && editId !== undefined) {
-      loadItem(editId);
+      void loadItem(editId);
     }
-  }, [db, editId, isEditing, navigation]);
+  }, [editId, isEditing, navigation]);
 
   async function loadItem(id: number) {
     const sub = await getSubscriptionById(db, id);
@@ -54,6 +58,8 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
     setName(sub.name);
     setCategory(sub.category ?? 'other');
     setIcon(sub.icon ?? '📦');
+    setImageUri(sub.image_uri ?? null);
+    setOriginalImageUri(sub.image_uri ?? null);
     setBillingCycle(sub.billing_cycle);
     setCyclePrice(String(sub.cycle_price));
     setStartDate(sub.start_date);
@@ -64,24 +70,43 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
     setIcon(cat.icon);
   }
 
+  async function handlePickImage() {
+    try {
+      const selectedUri = await pickEntityImageFromLibraryAsync();
+      if (selectedUri) {
+        setImageUri(selectedUri);
+      }
+    } catch (error) {
+      Alert.alert('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
+    }
+  }
+
   async function handleSave() {
     if (!name.trim()) {
       Alert.alert('提示', '请输入订阅名称');
       return;
     }
+
     const priceNum = parseFloat(cyclePrice);
-    if (isNaN(priceNum) || priceNum <= 0) {
+    if (Number.isNaN(priceNum) || priceNum <= 0) {
       Alert.alert('提示', '请输入有效的周期金额');
       return;
     }
 
     setLoading(true);
     try {
+      const savedImageUri = await resolveEntityImageForSaveAsync({
+        currentImageUri: originalImageUri,
+        nextImageUri: imageUri,
+        type: 'subscription',
+      });
+
       if (isEditing && editId !== undefined) {
         await updateSubscription(db, editId, {
           name: name.trim(),
           category,
           icon,
+          image_uri: savedImageUri,
           billing_cycle: billingCycle,
           cycle_price: priceNum,
           start_date: startDate,
@@ -91,12 +116,15 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
           name: name.trim(),
           category,
           icon,
+          image_uri: savedImageUri,
           billing_cycle: billingCycle,
           cycle_price: priceNum,
           start_date: startDate,
           status: 'active',
         });
       }
+
+      setOriginalImageUri(savedImageUri);
       navigation.goBack();
     } catch {
       Alert.alert('错误', '保存失败，请重试');
@@ -128,61 +156,32 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
           onSelect={handleCategoryChange}
         />
 
-        {/* 计费周期切换 */}
+        <ImagePickerField
+          label="封面图片（可选）"
+          imageUri={imageUri}
+          fallbackIcon={icon}
+          onPick={handlePickImage}
+          onRemove={() => setImageUri(null)}
+        />
+
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>计费周期</Text>
           <View style={styles.toggleRow}>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                billingCycle === 'monthly' && styles.toggleActive,
-              ]}
+            <CycleButton
+              title="按月"
+              active={billingCycle === 'monthly'}
               onPress={() => setBillingCycle('monthly')}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleText,
-                  billingCycle === 'monthly' && styles.toggleTextActive,
-                ]}
-              >
-                按月
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                billingCycle === 'quarterly' && styles.toggleActive,
-              ]}
+            />
+            <CycleButton
+              title="按季"
+              active={billingCycle === 'quarterly'}
               onPress={() => setBillingCycle('quarterly')}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleText,
-                  billingCycle === 'quarterly' && styles.toggleTextActive,
-                ]}
-              >
-                按季
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.toggleBtn,
-                billingCycle === 'yearly' && styles.toggleActive,
-              ]}
+            />
+            <CycleButton
+              title="按年"
+              active={billingCycle === 'yearly'}
               onPress={() => setBillingCycle('yearly')}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.toggleText,
-                  billingCycle === 'yearly' && styles.toggleTextActive,
-                ]}
-              >
-                按年
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
@@ -193,7 +192,7 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
               : billingCycle === 'quarterly'
                 ? '季'
                 : '年'
-          }付金额 (¥)`}
+          }付金额（¥）`}
           value={cyclePrice}
           onChangeText={setCyclePrice}
           placeholder="0.00"
@@ -225,6 +224,26 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+function CycleButton({
+  title,
+  active,
+  onPress,
+}: {
+  title: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.toggleBtn, active && styles.toggleActive]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Text style={[styles.toggleText, active && styles.toggleTextActive]}>{title}</Text>
+    </TouchableOpacity>
   );
 }
 

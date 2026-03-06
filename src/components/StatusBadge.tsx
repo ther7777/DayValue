@@ -6,10 +6,12 @@ interface StatusBadgeProps {
   status: 'unredeemed' | 'active' | 'archived';
   /** 区分实体类型，影响"已隐藏"的文案 */
   type?: 'item' | 'subscription' | 'stored_card';
+  /** 强制覆盖文案（用于特殊状态） */
+  labelOverride?: string;
 }
 
-export function StatusBadge({ status, type = 'item' }: StatusBadgeProps) {
-  const label =
+export function StatusBadge({ status, type = 'item', labelOverride }: StatusBadgeProps) {
+  const label = labelOverride ?? (
     status === 'unredeemed'
       ? '未赎身'
       : status === 'active'
@@ -18,7 +20,8 @@ export function StatusBadge({ status, type = 'item' }: StatusBadgeProps) {
           ? '已退订'
           : type === 'stored_card'
             ? '已隐藏'
-          : '已隐藏';
+            : '已隐藏'
+  );
 
   const backgroundColor =
     status === 'active'

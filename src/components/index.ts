@@ -5,6 +5,8 @@ export { StatusBadge } from './StatusBadge';
 export { EmptyState } from './EmptyState';
 export { CategoryPicker } from './CategoryPicker';
 export { DatePickerField } from './DatePickerField';
+export { EntityCover } from './EntityCover';
+export { ImagePickerField } from './ImagePickerField';
 export { ItemCard } from './ItemCard';
 export { SubscriptionCard } from './SubscriptionCard';
 export { StoredCardCard } from './StoredCardCard';

@@ -6,6 +6,7 @@ import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
 import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
+import { EntityCover } from './EntityCover';
 import type { Subscription } from '../types';
 
 interface SubscriptionCardProps {
@@ -18,6 +19,7 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
   const { getCategoryInfo } = useCategories();
   const category = getCategoryInfo('subscription', subscription.category ?? 'other');
   const icon = subscription.icon ?? category.icon;
+  const imageUri = subscription.image_uri ?? null;
   const dailyCost = calculateSubscriptionDailyCost(
     subscription.cycle_price,
     subscription.billing_cycle,
@@ -39,9 +41,12 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
     >
       {/* 顶部：图标 + 名称 + 状态 */}
       <View style={styles.header}>
-        <View style={[styles.iconBox, { backgroundColor: variantColors.iconBg + '30' }]}>
-          <Text style={styles.iconText}>{icon}</Text>
-        </View>
+        <EntityCover
+          imageUri={imageUri}
+          icon={icon}
+          backgroundColor={variantColors.iconBg + '30'}
+          style={styles.iconBox}
+        />
         <View style={styles.headerInfo}>
           <Text style={styles.name} numberOfLines={1}>{subscription.name}</Text>
           <Text style={styles.category}>{category.name}</Text>
@@ -85,9 +90,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: THEME.spacing.md,
-  },
-  iconText: {
-    fontSize: 22,
   },
   headerInfo: {
     flex: 1,

@@ -10,6 +10,7 @@ import { initDB } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
 import { BrutalButton } from '../components';
 import { THEME } from '../utils/constants';
+import { deleteAllEntityImagesAsync } from '../utils/entityImages';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -208,6 +209,7 @@ export function SettingsScreen({ navigation }: Props) {
     if (resetting) return;
     setResetting(true);
     try {
+      await deleteAllEntityImagesAsync();
       await db.execAsync(`
         DROP TABLE IF EXISTS OneTimeItems;
         DROP TABLE IF EXISTS Subscriptions;

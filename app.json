@@ -25,7 +25,13 @@
       "expo-sqlite",
       "@react-native-community/datetimepicker",
       "expo-font",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允许 DayValue 访问你的照片，用于给资产、订阅和卡包上传封面图片。"
+        }
+      ]
     ],
     "extra": {
       "eas": {

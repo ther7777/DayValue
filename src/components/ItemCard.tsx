@@ -2,10 +2,11 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { calculateDaysUsed, calculateDailyCost, calculateDailyDebt } from '../utils/calculations';
+import { calculateDaysUsed, calculateDailyCost, calculateDailyDebt, calculateOneTimeItemActiveDays } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
 import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
+import { EntityCover } from './EntityCover';
 import type { OneTimeItem } from '../types';
 import type { ViewStyle } from 'react-native';
 
@@ -19,11 +20,21 @@ export function ItemCard({ item, onPress, style }: ItemCardProps) {
   const { getCategoryInfo } = useCategories();
   const category = getCategoryInfo('item', item.category ?? 'other');
   const icon = item.icon ?? category.icon;
+  const imageUri = item.image_uri ?? null;
 
   const isUnredeemed = item.status === 'unredeemed';
-  const daysUsed = calculateDaysUsed(item.buy_date, item.end_date);
-  const dailyCost = calculateDailyCost(item.total_price, item.salvage_value, daysUsed);
+  const activeDays = calculateOneTimeItemActiveDays(item);
+  const archivedReason = item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+  const isSold = item.status === 'archived' && archivedReason === 'sold';
+  const dailyCost = calculateDailyCost(item.total_price, isSold ? item.salvage_value : 0, activeDays);
   const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
+
+  const archivedLabel =
+    item.status !== 'archived'
+      ? undefined
+      : archivedReason === 'sold'
+        ? '已售出'
+        : '已停用';
 
   // 赎身进度计算：以 30天为一个月供估算已还期数
   const totalMonths = item.installment_months ?? 0;
@@ -44,14 +55,17 @@ export function ItemCard({ item, onPress, style }: ItemCardProps) {
     >
       {/* 顶部：图标 + 名称 + 状态 */}
       <View style={styles.header}>
-        <View style={[styles.iconBox, { backgroundColor: variantColors.iconBg + '30' }]}>
-          <Text style={styles.iconText}>{icon}</Text>
-        </View>
+        <EntityCover
+          imageUri={imageUri}
+          icon={icon}
+          backgroundColor={variantColors.iconBg + '30'}
+          style={styles.iconBox}
+        />
         <View style={styles.headerInfo}>
           <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.category}>{category.name}</Text>
         </View>
-        <StatusBadge status={item.status} />
+        <StatusBadge status={item.status} labelOverride={archivedLabel} />
       </View>
 
       {/* 底部：关键数值 */}
@@ -80,8 +94,8 @@ export function ItemCard({ item, onPress, style }: ItemCardProps) {
               <Text style={styles.statValue}>{formatCurrency(item.total_price)}</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>已用</Text>
-              <Text style={styles.statValue}>{daysUsed} 天</Text>
+              <Text style={styles.statLabel}>激活</Text>
+              <Text style={styles.statValue}>{activeDays} 天</Text>
             </View>
             <View style={[styles.statItem, styles.statHighlight, { backgroundColor: variantColors.statHighlightBg + '18' }]}>
               <Text style={styles.statLabel}>日均</Text>
@@ -131,9 +145,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: THEME.spacing.md,
-  },
-  iconText: {
-    fontSize: 22,
   },
   headerInfo: {
     flex: 1,

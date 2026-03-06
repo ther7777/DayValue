@@ -6,6 +6,7 @@ export type StoredCardStatus = 'active' | 'archived';
 export type BillingCycle = 'monthly' | 'quarterly' | 'yearly';
 export type CategoryType = 'item' | 'subscription' | 'stored_card';
 export type StoredCardType = 'amount' | 'count';
+export type OneTimeItemArchivedReason = 'paused' | 'sold';
 
 /** 一次性资产（OneTimeItems 表） */
 export interface OneTimeItem {
@@ -13,10 +14,17 @@ export interface OneTimeItem {
   name: string;
   category: string | null;
   icon: string | null;
+  image_uri: string | null;
   total_price: number;
   buy_date: string;
   status: OneTimeItemStatus;
   salvage_value: number;
+  /** 已累计的“激活天数”（不含当前激活段） */
+  active_days: number;
+  /** 当前激活段的起始日期（仅 active 时有值） */
+  active_start_date: string | null;
+  /** archived 的原因：停用（可再用）/售出（不可恢复） */
+  archived_reason: OneTimeItemArchivedReason | null;
   is_installment: number; // 0 | 1
   installment_months: number | null;
   monthly_payment: number | null;
@@ -30,6 +38,7 @@ export interface Subscription {
   name: string;
   category: string | null;
   icon: string | null;
+  image_uri: string | null;
   cycle_price: number;
   billing_cycle: BillingCycle;
   start_date: string;
@@ -42,6 +51,7 @@ export interface StoredCard {
   name: string;
   category: string | null;
   icon: string | null;
+  image_uri: string | null;
   card_type: StoredCardType;
   actual_paid: number;
   face_value: number;
@@ -57,9 +67,13 @@ export interface OneTimeItemInput {
   name: string;
   category: string;
   icon: string;
+  image_uri?: string | null;
   total_price: number;
   buy_date: string;
   salvage_value?: number;
+  active_days?: number;
+  active_start_date?: string | null;
+  archived_reason?: OneTimeItemArchivedReason | null;
   is_installment?: number; // 0 | 1
   installment_months?: number | null;
   monthly_payment?: number | null;
@@ -72,6 +86,7 @@ export interface SubscriptionInput {
   name: string;
   category: string;
   icon: string;
+  image_uri?: string | null;
   cycle_price: number;
   billing_cycle: BillingCycle;
   start_date: string;
@@ -82,6 +97,7 @@ export interface StoredCardInput {
   name: string;
   category: string;
   icon: string;
+  image_uri?: string | null;
   card_type: StoredCardType;
   actual_paid: number;
   face_value: number;

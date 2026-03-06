@@ -7,7 +7,7 @@ import { seedSampleData } from './seed';
  * 用于 SQLiteProvider 的 onInit 回调
  */
 export async function initDB(db: SQLiteDatabase): Promise<void> {
-  const SCHEMA_VERSION = 5;
+  const SCHEMA_VERSION = 7;
 
   async function migrate(current: SQLiteDatabase) {
     const versionRow = await current.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -25,7 +25,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
           DROP TABLE IF EXISTS stored_cards;
           DROP TABLE IF EXISTS _meta;
         `);
-    } else if (!__DEV__ && userVersion !== 0 && userVersion !== SCHEMA_VERSION && userVersion !== 4) {
+    } else if (!__DEV__ && userVersion !== 0 && userVersion !== SCHEMA_VERSION && userVersion !== 4 && userVersion !== 5 && userVersion !== 6) {
       // 非开发环境：不做破坏性迁移，避免误删用户数据
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -47,6 +47,39 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         ALTER TABLE Categories_new RENAME TO Categories;
         CREATE INDEX IF NOT EXISTS idx_categories_type ON Categories(type);
       `);
+    } else if (userVersion === 5) {
+      // v6：一次性资产新增“激活天数”口径 + archived 原因（停用/售出）
+      await current.execAsync(`
+        ALTER TABLE OneTimeItems ADD COLUMN active_days INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE OneTimeItems ADD COLUMN active_start_date TEXT;
+        ALTER TABLE OneTimeItems ADD COLUMN archived_reason TEXT;
+
+        -- 回填：active/unredeemed 默认从 buy_date 开始计“激活段”
+        UPDATE OneTimeItems
+        SET active_start_date = buy_date
+        WHERE status IN ('active', 'unredeemed') AND (active_start_date IS NULL OR active_start_date = '');
+
+        -- 回填：archived 冻结激活天数（沿用旧口径 buy_date -> end_date）
+        UPDATE OneTimeItems
+        SET
+          active_days = CASE
+            WHEN end_date IS NOT NULL
+              THEN MAX(CAST(julianday(end_date) - julianday(buy_date) + 1 AS INTEGER), 1)
+            ELSE 0
+          END,
+          active_start_date = NULL,
+          archived_reason = CASE
+            WHEN salvage_value > 0 THEN 'sold'
+            ELSE 'paused'
+          END
+        WHERE status = 'archived';
+      `);
+    } else if (userVersion === 6) {
+      await current.execAsync(`
+        ALTER TABLE OneTimeItems ADD COLUMN image_uri TEXT;
+        ALTER TABLE Subscriptions ADD COLUMN image_uri TEXT;
+        ALTER TABLE StoredCards ADD COLUMN image_uri TEXT;
+      `);
     }
 
     // 一次性资产表（含“赎身”状态机）
@@ -56,10 +89,14 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         name               TEXT    NOT NULL,
         category           TEXT,
         icon               TEXT,
+        image_uri          TEXT,
         total_price        REAL    NOT NULL CHECK(total_price > 0),
         buy_date           TEXT    NOT NULL,
         status             TEXT    NOT NULL CHECK(status IN ('unredeemed', 'active', 'archived')),
         salvage_value      REAL    DEFAULT 0 CHECK(salvage_value >= 0 AND salvage_value <= total_price),
+        active_days        INTEGER NOT NULL DEFAULT 0 CHECK(active_days >= 0),
+        active_start_date  TEXT,
+        archived_reason    TEXT,
         is_installment     INTEGER DEFAULT 0 CHECK(is_installment IN (0, 1)),
         installment_months INTEGER,
         monthly_payment    REAL,
@@ -83,6 +120,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         name          TEXT    NOT NULL,
         category      TEXT,
         icon          TEXT,
+        image_uri     TEXT,
         cycle_price   REAL    NOT NULL CHECK(cycle_price > 0),
         billing_cycle TEXT    NOT NULL CHECK(billing_cycle IN ('monthly', 'quarterly', 'yearly')),
         start_date    TEXT    NOT NULL,
@@ -99,6 +137,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         name              TEXT    NOT NULL,
         category          TEXT,
         icon              TEXT,
+        image_uri         TEXT,
         card_type         TEXT    NOT NULL CHECK(card_type IN ('amount', 'count')),
         actual_paid       REAL    NOT NULL CHECK(actual_paid > 0),
         face_value        REAL    NOT NULL CHECK(face_value > 0),

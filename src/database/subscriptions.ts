@@ -25,12 +25,13 @@ export async function createSubscription(
   sub: SubscriptionInput,
 ): Promise<number> {
   const result = await db.runAsync(
-    `INSERT INTO Subscriptions (name, category, icon, cycle_price, billing_cycle, start_date, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO Subscriptions (name, category, icon, image_uri, cycle_price, billing_cycle, start_date, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       sub.name,
       sub.category,
       sub.icon,
+      sub.image_uri ?? null,
       sub.cycle_price,
       sub.billing_cycle,
       sub.start_date,
@@ -52,6 +53,7 @@ export async function updateSubscription(
   if (sub.name !== undefined) { fields.push('name = ?'); values.push(sub.name); }
   if (sub.category !== undefined) { fields.push('category = ?'); values.push(sub.category); }
   if (sub.icon !== undefined) { fields.push('icon = ?'); values.push(sub.icon); }
+  if (sub.image_uri !== undefined) { fields.push('image_uri = ?'); values.push(sub.image_uri ?? null); }
   if (sub.cycle_price !== undefined) { fields.push('cycle_price = ?'); values.push(sub.cycle_price); }
   if (sub.billing_cycle !== undefined) { fields.push('billing_cycle = ?'); values.push(sub.billing_cycle); }
   if (sub.start_date !== undefined) { fields.push('start_date = ?'); values.push(sub.start_date); }
@@ -81,4 +83,3 @@ export async function archiveSubscription(
     [id],
   );
 }
-

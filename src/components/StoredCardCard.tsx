@@ -10,6 +10,8 @@ import {
   Modal,
   Alert,
   StyleSheet,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import type { StoredCard } from '../types';
@@ -31,15 +33,25 @@ import { PixelInput } from './PixelInput';
 import { CardShell } from './CardShell';
 import { EntityCover } from './EntityCover';
 
+type StoredCardLayout = 'list' | 'grid';
+
 interface StoredCardCardProps {
   card: StoredCard;
   onPress: () => void;
   onDataChanged: () => void;
+  layout?: StoredCardLayout;
+  style?: StyleProp<ViewStyle>;
 }
 
 type AmountUpdateMode = 'deduct' | 'set';
 
-export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardProps) {
+export function StoredCardCard({
+  card,
+  onPress,
+  onDataChanged,
+  layout = 'list',
+  style,
+}: StoredCardCardProps) {
   const db = useSQLiteContext();
   const { getCategoryInfo } = useCategories();
   const categoryInfo = getCategoryInfo('stored_card', card.category ?? 'other');
@@ -51,6 +63,7 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
 
   const dormantDays = calculateDaysSince(card.last_updated_date);
   const isDormant = dormantDays > card.reminder_days;
+  const isGrid = layout === 'grid';
 
   const principal = calculateStoredPrincipal(
     card.actual_paid,
@@ -58,7 +71,7 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
     card.current_balance,
   );
 
-  // 折扣卡/等额储值：通常用户只会知道“当前还剩多少”，更适合默认走「设定剩余」
+  // 折扣卡、等额储值卡更适合直接录入商家显示的剩余额度。
   const isEqualValueAmountCard =
     card.card_type === 'amount' &&
     Math.abs(card.face_value - card.actual_paid) < 0.0001;
@@ -67,7 +80,6 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
   const displayIcon = card.icon ?? categoryInfo.icon;
   const imageUri = card.image_uri ?? null;
 
-  // 计次卡：已使用次数 = 总次数 - 当前剩余
   const usedCount = card.face_value - card.current_balance;
   const perUnitCost =
     card.card_type === 'count' && usedCount > 0
@@ -76,12 +88,12 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
 
   async function handleAmountSave() {
     const value = parseFloat(amountInput);
-    if (isNaN(value) || value < 0) {
-      Alert.alert('提示', '请输入有效金额（≥ 0）');
+    if (Number.isNaN(value) || value < 0) {
+      Alert.alert('提示', '请输入有效金额（>= 0）');
       return;
     }
     if (amountMode === 'deduct' && value <= 0) {
-      Alert.alert('🧐 扣个寂寞？', '消费金额得大于 0 才有意义哦');
+      Alert.alert('提示', '消费金额必须大于 0');
       return;
     }
 
@@ -90,12 +102,12 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
       const today = getTodayString();
       if (amountMode === 'deduct') {
         if (value > card.current_balance) {
-          Alert.alert('提示', `消费金额超过余额，将按余额扣完（¥${card.current_balance.toFixed(2)}）`);
+          Alert.alert('提示', `消费金额超过余额，将按当前余额扣完（${card.current_balance.toFixed(2)}）`);
         }
         await deductStoredCardAmount(db, card.id, value, today);
       } else {
         if (value > card.face_value) {
-          Alert.alert('提示', `余额不能超过总面值 ¥${card.face_value.toFixed(2)}`);
+          Alert.alert('提示', `余额不能超过总面值 ${card.face_value.toFixed(2)}`);
           return;
         }
         await setStoredCardBalance(db, card.id, value, today);
@@ -123,104 +135,176 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
     }
   }
 
+  const actionTitle = card.card_type === 'amount' ? '更新余额' : '打卡 -1';
+
   return (
     <>
       <CardShell
         onPress={onPress}
         variant="stored_card"
         alert={isDormant}
+        style={isGrid ? [styles.gridCard, style] : style}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <EntityCover
-              imageUri={imageUri}
-              icon={displayIcon}
-              size={44}
-              iconSize={24}
-              backgroundColor={THEME.colors.warning + '20'}
-            />
-            <View>
-              <Text style={styles.name} numberOfLines={1}>{card.name}</Text>
-              <Text style={styles.categoryLabel}>{categoryInfo.name}</Text>
+        {isGrid ? (
+          <>
+            <View style={styles.gridTop}>
+              <EntityCover
+                imageUri={imageUri}
+                icon={displayIcon}
+                size={52}
+                iconSize={26}
+                backgroundColor={THEME.colors.warning + '20'}
+              />
+              <View style={styles.gridTopContent}>
+                <View style={styles.gridBadgeRow}>
+                  <StatusBadge status={card.status} type="stored_card" />
+                </View>
+                <Text style={styles.gridName} numberOfLines={2}>{card.name}</Text>
+                <Text style={styles.gridCategory} numberOfLines={1}>{categoryInfo.name}</Text>
+              </View>
             </View>
-          </View>
-          <StatusBadge status={card.status} type="stored_card" />
-        </View>
 
-        {/* 沉睡预警条 */}
-        {isDormant && (
-          <View style={styles.dormantBanner}>
-            <Text style={styles.dormantText}>🚧 已沉睡 {dormantDays} 天</Text>
-          </View>
+            {isDormant && (
+              <View style={styles.gridDormantTag}>
+                <Text style={styles.gridDormantText}>已沉睡 {dormantDays} 天</Text>
+              </View>
+            )}
+
+            <View style={styles.gridStats}>
+              <View style={styles.gridStatBlock}>
+                <Text style={styles.gridStatLabel}>沉睡本金</Text>
+                <Text style={styles.gridPrincipalValue}>{formatCurrency(principal)}</Text>
+              </View>
+              <View style={styles.gridStatBlock}>
+                <Text style={styles.gridStatLabel}>
+                  {card.card_type === 'amount' ? '剩余额度' : '剩余次数'}
+                </Text>
+                <Text style={styles.gridStatValue} numberOfLines={2}>
+                  {card.card_type === 'amount'
+                    ? `${formatCurrency(card.current_balance)} / ${formatCurrency(card.face_value)}`
+                    : `${Math.round(card.current_balance)} / ${Math.round(card.face_value)} 次`}
+                </Text>
+                {card.card_type === 'count' && (
+                  <Text style={styles.gridSubValue} numberOfLines={1}>
+                    单次成本：{perUnitCost !== null ? formatCurrency(perUnitCost) : '未使用'}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.gridActionRow}>
+              {card.card_type === 'amount' ? (
+                <BrutalButton
+                  title={actionTitle}
+                  onPress={() => {
+                    setAmountMode(recommendedAmountMode);
+                    setAmountModalVisible(true);
+                  }}
+                  variant="accent"
+                  size="sm"
+                  style={styles.gridActionBtn}
+                />
+              ) : (
+                <BrutalButton
+                  title={actionTitle}
+                  onPress={handlePunchCount}
+                  variant={card.current_balance <= 0 ? 'outline' : 'success'}
+                  size="sm"
+                  style={styles.gridActionBtn}
+                  disabled={card.current_balance <= 0}
+                />
+              )}
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.header}>
+              <View style={styles.headerLeft}>
+                <EntityCover
+                  imageUri={imageUri}
+                  icon={displayIcon}
+                  size={44}
+                  iconSize={24}
+                  backgroundColor={THEME.colors.warning + '20'}
+                />
+                <View>
+                  <Text style={styles.name} numberOfLines={1}>{card.name}</Text>
+                  <Text style={styles.categoryLabel}>{categoryInfo.name}</Text>
+                </View>
+              </View>
+              <StatusBadge status={card.status} type="stored_card" />
+            </View>
+
+            {isDormant && (
+              <View style={styles.dormantBanner}>
+                <Text style={styles.dormantText}>已沉睡 {dormantDays} 天</Text>
+              </View>
+            )}
+
+            <View style={styles.dataRow}>
+              <View style={styles.principalBlock}>
+                <Text style={styles.principalLabel}>实际沉睡本金</Text>
+                <Text style={styles.principalValue}>{formatCurrency(principal)}</Text>
+              </View>
+
+              {card.card_type === 'amount' ? (
+                <View style={styles.balanceBlock}>
+                  <Text style={styles.balanceLabel}>剩余额度</Text>
+                  <Text style={styles.balanceValue}>
+                    {formatCurrency(card.current_balance)}
+                    <Text style={styles.balanceDivider}> / </Text>
+                    <Text style={styles.balanceFace}>{formatCurrency(card.face_value)}</Text>
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.balanceBlock}>
+                  <Text style={styles.balanceLabel}>剩余次数</Text>
+                  <Text style={styles.balanceValue}>
+                    {Math.round(card.current_balance)}
+                    <Text style={styles.balanceDivider}> / </Text>
+                    <Text style={styles.balanceFace}>{Math.round(card.face_value)}</Text>
+                    <Text style={styles.balanceUnit}> 次</Text>
+                  </Text>
+                  <Text style={styles.perUnit}>
+                    单次成本：{perUnitCost !== null ? formatCurrency(perUnitCost) : '未使用'}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.actions}>
+              {card.card_type === 'amount' ? (
+                <BrutalButton
+                  title={actionTitle}
+                  onPress={() => {
+                    setAmountMode(recommendedAmountMode);
+                    setAmountModalVisible(true);
+                  }}
+                  variant="accent"
+                  size="sm"
+                  style={styles.actionBtn}
+                />
+              ) : (
+                <BrutalButton
+                  title={actionTitle}
+                  onPress={handlePunchCount}
+                  variant={card.current_balance <= 0 ? 'outline' : 'success'}
+                  size="sm"
+                  style={styles.actionBtn}
+                  disabled={card.current_balance <= 0}
+                />
+              )}
+            </View>
+          </>
         )}
-
-        {/* 主数据行 */}
-        <View style={styles.dataRow}>
-          <View style={styles.principalBlock}>
-            <Text style={styles.principalLabel}>实际沉睡本金</Text>
-            <Text style={styles.principalValue}>{formatCurrency(principal)}</Text>
-          </View>
-
-          {card.card_type === 'amount' ? (
-            <View style={styles.balanceBlock}>
-              <Text style={styles.balanceLabel}>剩余额度</Text>
-              <Text style={styles.balanceValue}>
-                {formatCurrency(card.current_balance)}
-                <Text style={styles.balanceDivider}> / </Text>
-                <Text style={styles.balanceFace}>{formatCurrency(card.face_value)}</Text>
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.balanceBlock}>
-              <Text style={styles.balanceLabel}>剩余次数</Text>
-              <Text style={styles.balanceValue}>
-                {Math.round(card.current_balance)}
-                <Text style={styles.balanceDivider}> / </Text>
-                <Text style={styles.balanceFace}>{Math.round(card.face_value)}</Text>
-                <Text style={styles.balanceUnit}> 次</Text>
-              </Text>
-              <Text style={styles.perUnit}>
-                单次成本：{perUnitCost !== null ? formatCurrency(perUnitCost) : '— / 未使用'}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* 操作按钮区 - 阻止冒泡触发 onPress */}
-        <View style={styles.actions}>
-          {card.card_type === 'amount' ? (
-            <BrutalButton
-              title="更新余额"
-              onPress={() => {
-                setAmountMode(recommendedAmountMode);
-                setAmountModalVisible(true);
-              }}
-              variant="accent"
-              size="sm"
-              style={styles.actionBtn}
-            />
-          ) : (
-            <BrutalButton
-              title="打卡 −1"
-              onPress={handlePunchCount}
-              variant={card.current_balance <= 0 ? 'outline' : 'success'}
-              size="sm"
-              style={styles.actionBtn}
-              disabled={card.current_balance <= 0}
-            />
-          )}
-        </View>
       </CardShell>
 
-      {/* 储值卡更新余额弹窗 */}
       <Modal visible={amountModalVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>更新余额</Text>
             <Text style={styles.modalSubtitle}>{card.name}</Text>
 
-            {/* 模式切换 */}
             <View style={styles.modeRow}>
               <TouchableOpacity
                 style={[styles.modeBtn, amountMode === 'deduct' && styles.modeBtnActive]}
@@ -249,12 +333,12 @@ export function StoredCardCard({ card, onPress, onDataChanged }: StoredCardCardP
             </Text>
             {isEqualValueAmountCard && (
               <Text style={styles.recommendHint}>
-                小提示：如果是折扣卡/等额储值卡，推荐用「设定剩余」直接填写商家显示的余额（不用自己算原价）。
+                小提示：折扣卡、等额储值卡更适合直接填写商家展示的当前余额。
               </Text>
             )}
 
             <PixelInput
-              label={amountMode === 'deduct' ? '消费金额 (¥)' : '当前剩余 (¥)'}
+              label={amountMode === 'deduct' ? '消费金额 (￥)' : '当前剩余 (￥)'}
               value={amountInput}
               onChangeText={setAmountInput}
               placeholder="0.00"
@@ -382,7 +466,91 @@ const styles = StyleSheet.create({
   actionBtn: {
     alignSelf: 'flex-start',
   },
-  // Modal
+  gridCard: {
+    minHeight: 212,
+    marginBottom: 0,
+    padding: THEME.spacing.sm + 2,
+  },
+  gridTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: THEME.spacing.xs,
+    gap: THEME.spacing.sm,
+  },
+  gridTopContent: {
+    flex: 1,
+    minHeight: 52,
+  },
+  gridBadgeRow: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  gridName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    minHeight: 34,
+  },
+  gridCategory: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  gridDormantTag: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: THEME.spacing.xs + 2,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: THEME.colors.warning + '26',
+    borderWidth: 1,
+    borderColor: THEME.colors.warning,
+    marginBottom: THEME.spacing.xs,
+  },
+  gridDormantText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#856404',
+  },
+  gridStats: {
+    flexDirection: 'row',
+    gap: THEME.spacing.xs,
+    marginBottom: THEME.spacing.sm,
+  },
+  gridStatBlock: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: THEME.spacing.xs,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+  },
+  gridStatLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginBottom: 4,
+  },
+  gridStatValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  gridPrincipalValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.danger,
+  },
+  gridSubValue: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginTop: 4,
+  },
+  gridActionRow: {
+    marginTop: 'auto',
+  },
+  gridActionBtn: {
+    width: '100%',
+  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

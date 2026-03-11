@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
 import { calculateSubscriptionDailyCost } from '../utils/calculations';
@@ -9,13 +9,21 @@ import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import { EntityCover } from './EntityCover';
 import type { Subscription } from '../types';
 
+type SubscriptionCardLayout = 'list' | 'grid';
+
 interface SubscriptionCardProps {
   subscription: Subscription;
   onPress: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  layout?: SubscriptionCardLayout;
 }
 
-export function SubscriptionCard({ subscription, onPress, style }: SubscriptionCardProps) {
+export function SubscriptionCard({
+  subscription,
+  onPress,
+  style,
+  layout = 'list',
+}: SubscriptionCardProps) {
   const { getCategoryInfo } = useCategories();
   const category = getCategoryInfo('subscription', subscription.category ?? 'other');
   const icon = subscription.icon ?? category.icon;
@@ -31,7 +39,62 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
         ? '季付'
         : '年付';
 
-  const variantColors = CARD_VARIANT_COLORS['subscription'];
+  const variantColors = CARD_VARIANT_COLORS.subscription;
+  const isGrid = layout === 'grid';
+
+  if (isGrid) {
+    return (
+      <CardShell
+        onPress={onPress}
+        variant="subscription"
+        style={[styles.gridCard, style]}
+      >
+        <View style={styles.gridTop}>
+          <EntityCover
+            imageUri={imageUri}
+            icon={icon}
+            size={52}
+            iconSize={26}
+            backgroundColor={variantColors.iconBg + '30'}
+          />
+          <View style={styles.gridTopContent}>
+            <View style={styles.gridBadgeRow}>
+              <StatusBadge status={subscription.status} type="subscription" />
+            </View>
+            <Text style={styles.gridName} numberOfLines={2}>{subscription.name}</Text>
+            <Text style={styles.gridCategory} numberOfLines={1}>{category.name}</Text>
+          </View>
+        </View>
+
+        <View style={styles.gridStats}>
+          <View style={styles.gridStatBlock}>
+            <Text style={styles.gridStatLabel}>{cycleLabel}</Text>
+            <Text style={styles.gridStatValue}>
+              {formatCurrency(subscription.cycle_price)}
+            </Text>
+          </View>
+          <View style={styles.gridStatBlock}>
+            <Text style={styles.gridStatLabel}>开始</Text>
+            <Text style={styles.gridStatValue} numberOfLines={1}>
+              {subscription.start_date}
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.gridHighlight,
+            { backgroundColor: variantColors.statHighlightBg + '18' },
+          ]}
+        >
+          <Text style={styles.gridHighlightLabel}>日均</Text>
+          <Text style={[styles.gridHighlightValue, { color: variantColors.accentText }]}>
+            {formatCurrency(dailyCost)}
+          </Text>
+        </View>
+      </CardShell>
+    );
+  }
 
   return (
     <CardShell
@@ -39,7 +102,6 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
       variant="subscription"
       style={style}
     >
-      {/* 顶部：图标 + 名称 + 状态 */}
       <View style={styles.header}>
         <EntityCover
           imageUri={imageUri}
@@ -51,10 +113,9 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
           <Text style={styles.name} numberOfLines={1}>{subscription.name}</Text>
           <Text style={styles.category}>{category.name}</Text>
         </View>
-        <StatusBadge status={subscription.status} />
+        <StatusBadge status={subscription.status} type="subscription" />
       </View>
 
-      {/* 底部：关键数值 */}
       <View style={styles.stats}>
         <View style={styles.statItem}>
           <Text style={styles.statLabel}>{cycleLabel}</Text>
@@ -64,7 +125,13 @@ export function SubscriptionCard({ subscription, onPress, style }: SubscriptionC
           <Text style={styles.statLabel}>开始</Text>
           <Text style={styles.statValue}>{subscription.start_date}</Text>
         </View>
-        <View style={[styles.statItem, styles.statHighlight, { backgroundColor: variantColors.statHighlightBg + '18' }]}>
+        <View
+          style={[
+            styles.statItem,
+            styles.statHighlight,
+            { backgroundColor: variantColors.statHighlightBg + '18' },
+          ]}
+        >
           <Text style={styles.statLabel}>日均</Text>
           <Text style={[styles.statValue, styles.dailyCost, { color: variantColors.accentText }]}>
             {formatCurrency(dailyCost)}
@@ -132,5 +199,76 @@ const styles = StyleSheet.create({
   dailyCost: {
     fontFamily: THEME.fontFamily.pixel,
     fontSize: THEME.fontSize.sm,
+  },
+  gridCard: {
+    minHeight: 188,
+    marginBottom: 0,
+    padding: THEME.spacing.sm + 2,
+  },
+  gridTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
+  gridTopContent: {
+    flex: 1,
+    minHeight: 52,
+  },
+  gridBadgeRow: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  gridName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    minHeight: 34,
+  },
+  gridCategory: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+    marginBottom: THEME.spacing.xs,
+  },
+  gridStats: {
+    flexDirection: 'row',
+    gap: THEME.spacing.xs,
+    marginBottom: THEME.spacing.xs,
+  },
+  gridStatBlock: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: THEME.spacing.xs,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+  },
+  gridStatLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginBottom: 4,
+  },
+  gridStatValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  gridHighlight: {
+    borderRadius: 4,
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.sm,
+    marginTop: 'auto',
+  },
+  gridHighlightLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginBottom: 4,
+  },
+  gridHighlightValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: THEME.fontFamily.pixel,
   },
 });

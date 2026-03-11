@@ -15,7 +15,7 @@
  * 壳层本身保持统一。
  */
 import React from 'react';
-import { TouchableOpacity, StyleSheet, type ViewStyle } from 'react-native';
+import { TouchableOpacity, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
 
 export type CardVariant = 'asset' | 'debt' | 'subscription' | 'stored_card';
@@ -28,7 +28,7 @@ interface CardShellProps {
   /** 是否处于特殊状态（如沉睡预警），改变边框色 */
   alert?: boolean;
   disabled?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 /**

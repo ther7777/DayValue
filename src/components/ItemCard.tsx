@@ -8,19 +8,23 @@ import { StatusBadge } from './StatusBadge';
 import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import { EntityCover } from './EntityCover';
 import type { OneTimeItem } from '../types';
-import type { ViewStyle } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
+
+type ItemCardLayout = 'list' | 'grid';
 
 interface ItemCardProps {
   item: OneTimeItem;
   onPress: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  layout?: ItemCardLayout;
 }
 
-export function ItemCard({ item, onPress, style }: ItemCardProps) {
+export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProps) {
   const { getCategoryInfo } = useCategories();
   const category = getCategoryInfo('item', item.category ?? 'other');
   const icon = item.icon ?? category.icon;
   const imageUri = item.image_uri ?? null;
+  const isGrid = layout === 'grid';
 
   const isUnredeemed = item.status === 'unredeemed';
   const activeDays = calculateOneTimeItemActiveDays(item);
@@ -46,6 +50,60 @@ export function ItemCard({ item, onPress, style }: ItemCardProps) {
 
   const variant = isUnredeemed ? 'debt' : 'asset';
   const variantColors = CARD_VARIANT_COLORS[variant];
+
+  if (isGrid) {
+    return (
+      <CardShell
+        onPress={onPress}
+        variant={variant}
+        style={[styles.gridCard, style]}
+      >
+        <View style={styles.gridTop}>
+          <EntityCover
+            imageUri={imageUri}
+            icon={icon}
+            size={52}
+            iconSize={26}
+            backgroundColor={variantColors.iconBg + '30'}
+          />
+          <View style={styles.gridTopContent}>
+            <View style={styles.gridBadgeRow}>
+              <StatusBadge status={item.status} labelOverride={archivedLabel} />
+            </View>
+            <Text style={styles.gridName} numberOfLines={2}>{item.name}</Text>
+            <Text style={styles.gridCategory} numberOfLines={1}>{category.name}</Text>
+          </View>
+        </View>
+
+        <View style={styles.gridStats}>
+          <View style={styles.gridStatBlock}>
+            <Text style={styles.gridStatLabel}>{isUnredeemed ? '月供' : '购入'}</Text>
+            <Text style={styles.gridStatValue}>
+              {formatCurrency(isUnredeemed ? (item.monthly_payment ?? 0) : item.total_price)}
+            </Text>
+          </View>
+          <View style={styles.gridStatBlock}>
+            <Text style={styles.gridStatLabel}>{isUnredeemed ? '期数' : '激活'}</Text>
+            <Text style={styles.gridStatValue}>
+              {isUnredeemed ? `${item.installment_months ?? 0} 个月` : `${activeDays} 天`}
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.gridHighlight,
+            { backgroundColor: variantColors.statHighlightBg + '18' },
+          ]}
+        >
+          <Text style={styles.gridHighlightLabel}>{isUnredeemed ? '日供' : '日均'}</Text>
+          <Text style={[styles.gridHighlightValue, { color: variantColors.accentText }]}>
+            {formatCurrency(isUnredeemed ? dailyDebt : dailyCost)}
+          </Text>
+        </View>
+      </CardShell>
+    );
+  }
 
   return (
     <CardShell
@@ -226,5 +284,76 @@ const styles = StyleSheet.create({
     color: THEME.colors.textPrimary,
     minWidth: 48,
     textAlign: 'right',
+  },
+  gridCard: {
+    minHeight: 188,
+    marginBottom: 0,
+    padding: THEME.spacing.sm + 2,
+  },
+  gridTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
+  gridTopContent: {
+    flex: 1,
+    minHeight: 52,
+  },
+  gridBadgeRow: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  gridName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    minHeight: 34,
+  },
+  gridCategory: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+    marginBottom: THEME.spacing.xs,
+  },
+  gridStats: {
+    flexDirection: 'row',
+    gap: THEME.spacing.xs,
+    marginBottom: THEME.spacing.xs,
+  },
+  gridStatBlock: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: THEME.spacing.xs,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+  },
+  gridStatLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginBottom: 4,
+  },
+  gridStatValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  gridHighlight: {
+    borderRadius: 4,
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.sm,
+    marginTop: 'auto',
+  },
+  gridHighlightLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginBottom: 4,
+  },
+  gridHighlightValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: THEME.fontFamily.pixel,
   },
 });

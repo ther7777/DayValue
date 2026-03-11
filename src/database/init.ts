@@ -20,6 +20,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
           DROP TABLE IF EXISTS Subscriptions;
           DROP TABLE IF EXISTS StoredCards;
           DROP TABLE IF EXISTS Categories;
+          DROP TABLE IF EXISTS AppPreferences;
           DROP TABLE IF EXISTS one_time_items;
           DROP TABLE IF EXISTS subscriptions;
           DROP TABLE IF EXISTS stored_cards;
@@ -164,6 +165,13 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       );
 
       CREATE INDEX IF NOT EXISTS idx_categories_type ON Categories(type);
+    `);
+
+    await current.execAsync(`
+      CREATE TABLE IF NOT EXISTS AppPreferences (
+        key   TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );
     `);
 
     // 写入默认分类：即便已有 seed 数据，也要保证分类表可用

@@ -31,7 +31,7 @@ const http = require("http");
 const { spawnSync } = require("child_process");
 
 function spawnCrossPlatform(cmd, args, options = {}) {
-  const { shell = false, ...restOptions } = options;
+  const { shell = process.platform === "win32", ...restOptions } = options;
   return spawnSync(cmd, args, { shell, ...restOptions });
 }
 
@@ -87,15 +87,25 @@ function runCaptureStdout(cmd, args, { cwd, dryRun } = {}) {
   return { stdout: res.stdout ?? "" };
 }
 
+function getCommandCandidates(cmd) {
+  if (process.platform !== "win32") return [cmd];
+  return [cmd, `${cmd}.cmd`, `${cmd}.exe`];
+}
+
 function commandExists(cmd, { cwd } = {}) {
-  const res = spawnCrossPlatform(cmd, ["--version"], { cwd, stdio: "pipe", encoding: "utf8" });
-  if (res.error) return false;
-  return res.status === 0;
+  for (const candidate of getCommandCandidates(cmd)) {
+    const res = spawnCrossPlatform(candidate, ["--version"], { cwd, stdio: "pipe", encoding: "utf8" });
+    if (res.error) continue;
+    if (res.status === 0) return candidate;
+  }
+  return null;
 }
 
 function resolveEasRunner({ cwd } = {}) {
-  if (commandExists("eas", { cwd })) return { cmd: "eas", prefixArgs: [] };
-  if (commandExists("npx", { cwd })) return { cmd: "npx", prefixArgs: ["-y", "eas-cli"] };
+  const easCmd = commandExists("eas", { cwd });
+  if (easCmd) return { cmd: easCmd, prefixArgs: [] };
+  const npxCmd = commandExists("npx", { cwd });
+  if (npxCmd) return { cmd: npxCmd, prefixArgs: ["-y", "eas-cli"] };
   return null;
 }
 

@@ -133,7 +133,7 @@ function validateEasJsonProfiles({ repoRoot, profiles }) {
     const buildType = json?.build?.[profile]?.android?.buildType;
     if (buildType !== "apk") {
       throw new Error(
-        `eas.json 配置不符合预期：build.${profile}.android.buildType 需要是 \"apk\"（当前：${JSON.stringify(buildType)}）`
+        `eas.json 配置不符合预期：build.${profile}.android.buildType 需要是 "apk"（当前：${JSON.stringify(buildType)}）`
       );
     }
   }
@@ -302,7 +302,6 @@ async function ensureApkForTarget({
     throw new Error("当前环境无法交互输入，且 non-interactive 构建失败。请在可交互终端重试。");
   }
 
-  // 交互构建：跑完后用 build:list 拉取最新产物
   try {
     run(
       easRunner.cmd,

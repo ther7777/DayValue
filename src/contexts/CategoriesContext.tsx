@@ -24,7 +24,11 @@ interface CategoriesContextValue {
 
 const CategoriesContext = createContext<CategoriesContextValue | null>(null);
 
-const FALLBACK_OTHER: CategoryInfo = { id: 'other', name: '其他', icon: '📦' };
+const FALLBACK_CATEGORY_BY_TYPE: Record<CategoryType, CategoryInfo> = {
+  item: { id: 'other', name: '其他资产', icon: '📦' },
+  subscription: { id: 'other', name: '其他服务', icon: '📦' },
+  stored_card: { id: 'other', name: '其他卡包', icon: '💳' },
+};
 
 export function CategoriesProvider({ children }: { children: React.ReactNode }) {
   const db = useSQLiteContext();
@@ -50,7 +54,7 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }) 
   }, [db]);
 
   useEffect(() => {
-    refreshCategories();
+    void refreshCategories();
   }, [refreshCategories]);
 
   const createCategory = useCallback(
@@ -90,10 +94,11 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }) 
           : type === 'subscription'
             ? subscriptionCategories
             : storedCardCategories;
+
       return (
-        list.find(c => c.id === categoryId) ??
-        list.find(c => c.id === 'other') ??
-        FALLBACK_OTHER
+        list.find(category => category.id === categoryId) ??
+        list.find(category => category.id === 'other') ??
+        FALLBACK_CATEGORY_BY_TYPE[type]
       );
     },
     [itemCategories, storedCardCategories, subscriptionCategories],
@@ -130,9 +135,9 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }) 
 }
 
 export function useCategories(): CategoriesContextValue {
-  const ctx = useContext(CategoriesContext);
-  if (!ctx) {
+  const context = useContext(CategoriesContext);
+  if (!context) {
     throw new Error('useCategories 必须在 CategoriesProvider 内使用');
   }
-  return ctx;
+  return context;
 }

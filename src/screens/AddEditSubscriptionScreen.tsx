@@ -18,9 +18,11 @@ import {
   BrutalButton,
   CategoryPicker,
   DatePickerField,
+  IconPicker,
   ImagePickerField,
   PixelInput,
 } from '../components';
+import { useCategories } from '../contexts/CategoriesContext';
 import { THEME } from '../utils/constants';
 import { getTodayString } from '../utils/formatters';
 import {
@@ -32,12 +34,18 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AddEditSubscription'>;
 
 export function AddEditSubscriptionScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
+  const { getCategoryInfo, loading: categoriesLoading } = useCategories();
   const editId = route.params?.subscriptionId;
   const isEditing = editId !== undefined;
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState('software');
   const [icon, setIcon] = useState('💿');
+  const [iconTouched, setIconTouched] = useState(false);
+  const [pendingLoadedIcon, setPendingLoadedIcon] = useState<{
+    categoryId: string;
+    savedIcon: string | null;
+  } | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
@@ -60,22 +68,52 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
     }
   }, [editId, isEditing, loadItemSafe, navigation]);
 
+  useEffect(() => {
+    if (isEditing || categoriesLoading || iconTouched) return;
+    const nextIcon = getCategoryInfo('subscription', category).icon;
+    if (icon !== nextIcon) {
+      setIcon(nextIcon);
+    }
+  }, [categoriesLoading, category, getCategoryInfo, icon, iconTouched, isEditing]);
+
+  useEffect(() => {
+    if (!pendingLoadedIcon || categoriesLoading) return;
+
+    const categoryDefaultIcon = getCategoryInfo('subscription', pendingLoadedIcon.categoryId).icon;
+    setIcon(pendingLoadedIcon.savedIcon ?? categoryDefaultIcon);
+    setIconTouched(
+      Boolean(pendingLoadedIcon.savedIcon && pendingLoadedIcon.savedIcon !== categoryDefaultIcon),
+    );
+    setPendingLoadedIcon(null);
+  }, [categoriesLoading, getCategoryInfo, pendingLoadedIcon]);
+
   async function loadItem(id: number) {
     const sub = await getSubscriptionById(db, id);
     if (!sub) return;
+
+    const nextCategoryId = sub.category ?? 'other';
+
     setName(sub.name);
-    setCategory(sub.category ?? 'other');
-    setIcon(sub.icon ?? '📦');
+    setCategory(nextCategoryId);
     setImageUri(sub.image_uri ?? null);
     setOriginalImageUri(sub.image_uri ?? null);
     setBillingCycle(sub.billing_cycle);
     setCyclePrice(String(sub.cycle_price));
     setStartDate(sub.start_date);
+    setIconTouched(false);
+    setPendingLoadedIcon({ categoryId: nextCategoryId, savedIcon: sub.icon ?? null });
   }
 
   function handleCategoryChange(cat: CategoryInfo) {
     setCategory(cat.id);
-    setIcon(cat.icon);
+    if (!iconTouched) {
+      setIcon(cat.icon);
+    }
+  }
+
+  function handleIconChange(nextIcon: string) {
+    setIcon(nextIcon);
+    setIconTouched(true);
   }
 
   async function handlePickImage() {
@@ -162,6 +200,13 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
           type="subscription"
           selectedId={category}
           onSelect={handleCategoryChange}
+        />
+
+        <IconPicker
+          label="订阅图标"
+          value={icon}
+          onSelect={handleIconChange}
+          helperText="默认跟随分类预填；手动修改后会独立保存，不再随分类变化。"
         />
 
         <ImagePickerField

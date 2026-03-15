@@ -1,48 +1,35 @@
 import type { CategoryInfo } from '../types';
 
-// ===================== 预设分类 =====================
-
 export const CATEGORIES: CategoryInfo[] = [
-  { id: 'digital', name: '数码', icon: '📱' },
-  { id: 'computer', name: '电脑', icon: '💻' },
-  { id: 'home', name: '居家', icon: '🏠' },
-  { id: 'transport', name: '出行', icon: '🚗' },
-  { id: 'clothing', name: '服饰', icon: '👔' },
-  { id: 'entertainment', name: '娱乐', icon: '🎮' },
-  { id: 'software', name: '软件', icon: '💿' },
-  { id: 'education', name: '学习', icon: '📚' },
-  { id: 'sports', name: '运动', icon: '⚽' },
-  { id: 'other', name: '其他', icon: '📦' },
+  { id: 'digital', name: '数码设备', icon: '📱' },
+  { id: 'computer', name: '电脑办公', icon: '💻' },
+  { id: 'home', name: '家电家居', icon: '🏠' },
+  { id: 'transport', name: '出行装备', icon: '🚗' },
+  { id: 'clothing', name: '穿戴配件', icon: '⌚' },
+  { id: 'entertainment', name: '影音游戏', icon: '🎮' },
+  { id: 'software', name: '软件服务', icon: '💿' },
+  { id: 'education', name: '学习设备', icon: '🎓' },
+  { id: 'sports', name: '运动器材', icon: '🏋️' },
+  { id: 'other', name: '其他资产', icon: '📦' },
 ];
 
-/** 通过 categoryId 获取分类信息，找不到则返回"其他" */
 export function getCategoryInfo(categoryId: string): CategoryInfo {
-  return CATEGORIES.find(c => c.id === categoryId) ?? CATEGORIES[CATEGORIES.length - 1];
+  return CATEGORIES.find(category => category.id === categoryId) ?? CATEGORIES[CATEGORIES.length - 1];
 }
-
-// ===================== 清新像素风主题 =====================
 
 export const THEME = {
   colors: {
-    // ---- 品牌灵魂紫 (Hero / 顶栏 / 品牌标识) ----
     primary: '#6C5CE7',
     primaryLight: '#A29BFE',
     primaryDark: '#4834D4',
-
-    // ---- 功能强调色 ----
     accent: '#00CEC9',
     accentLight: '#81ECEC',
-    /** 暖黄高亮：日均成本徽章、CTA 按钮强调 */
     highlight: '#FFD93D',
     highlightMuted: '#FFF3CD',
-
-    // ---- 语义色 ----
     danger: '#FF7675',
     dangerDark: '#D63031',
     warning: '#FDCB6E',
     success: '#00B894',
-
-    // ---- 表面 & 文字 ----
     background: '#F0F3FA',
     surface: '#FFFFFF',
     textPrimary: '#2D3436',

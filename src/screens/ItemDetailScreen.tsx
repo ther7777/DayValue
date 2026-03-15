@@ -1,24 +1,24 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
   Alert,
-  Modal,
   Animated,
+  Modal,
+  ScrollView,
   StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, OneTimeItem } from '../types';
+import type { OneTimeItem, RootStackParamList } from '../types';
 import {
-  getOneTimeItemById,
   deleteOneTimeItem,
+  getOneTimeItemById,
   pauseOneTimeItem,
+  redeemOneTimeItem,
   resumeOneTimeItem,
   sellOneTimeItem,
-  redeemOneTimeItem,
 } from '../database';
 import {
   calculateDailyCost,
@@ -26,11 +26,13 @@ import {
   calculateIRR,
   calculateInstallmentPremium,
   calculateOneTimeItemActiveDays,
+  calculateRealizedProfit,
+  isProfitableSale,
 } from '../utils/calculations';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { BrutalButton, EntityCover, PixelInput, DatePickerField, StatusBadge } from '../components';
+import { BrutalButton, DatePickerField, EntityCover, PixelInput, StatusBadge } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ItemDetail'>;
@@ -41,7 +43,6 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const { itemId } = route.params;
   const [item, setItem] = useState<OneTimeItem | null>(null);
 
-  // 停用 / 再用 / 售出弹窗
   const [pauseModalVisible, setPauseModalVisible] = useState(false);
   const [pauseDate, setPauseDate] = useState(getTodayString());
   const [resumeModalVisible, setResumeModalVisible] = useState(false);
@@ -51,7 +52,6 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const [sellPrice, setSellPrice] = useState('');
   const [statusBusy, setStatusBusy] = useState(false);
 
-  // 赎身成功动画弹窗
   const [redeemModalVisible, setRedeemModalVisible] = useState(false);
   const [redeemBusy, setRedeemBusy] = useState(false);
   const redeemScale = useRef(new Animated.Value(0.9)).current;
@@ -176,8 +176,8 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       await pauseOneTimeItem(db, itemId, pauseDate);
       setPauseModalVisible(false);
       await loadItem();
-    } catch (e) {
-      Alert.alert('错误', e instanceof Error ? e.message : '停用失败，请重试');
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '停用失败，请重试');
     } finally {
       setStatusBusy(false);
     }
@@ -194,8 +194,8 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       await resumeOneTimeItem(db, itemId, resumeDate);
       setResumeModalVisible(false);
       await loadItem();
-    } catch (e) {
-      Alert.alert('错误', e instanceof Error ? e.message : '恢复失败，请重试');
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '恢复失败，请重试');
     } finally {
       setStatusBusy(false);
     }
@@ -207,13 +207,10 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       Alert.alert('提示', '售出日期不能晚于今天');
       return;
     }
+
     const priceNum = parseFloat(sellPrice);
-    if (isNaN(priceNum) || priceNum < 0) {
+    if (Number.isNaN(priceNum) || priceNum < 0) {
       Alert.alert('提示', '请输入有效的卖出价（≥ 0）');
-      return;
-    }
-    if (priceNum > item.total_price) {
-      Alert.alert('提示', '卖出价不能高于原价');
       return;
     }
 
@@ -223,8 +220,8 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       setSellModalVisible(false);
       setSellPrice('');
       await loadItem();
-    } catch (e) {
-      Alert.alert('错误', e instanceof Error ? e.message : '售出失败，请重试');
+    } catch (error) {
+      Alert.alert('错误', error instanceof Error ? error.message : '售出失败，请重试');
     } finally {
       setStatusBusy(false);
     }
@@ -245,17 +242,16 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const isUnredeemed = item.status === 'unredeemed';
   const isActive = item.status === 'active';
   const isArchived = item.status === 'archived';
-
-  const archivedReason =
-    item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+  const archivedReason = item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
   const isSold = isArchived && archivedReason === 'sold';
   const isPaused = isArchived && archivedReason !== 'sold';
 
   const activeDays = calculateOneTimeItemActiveDays(item);
   const dailyCost = calculateDailyCost(item.total_price, isSold ? item.salvage_value : 0, activeDays);
   const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
+  const realizedProfit = isSold ? calculateRealizedProfit(item.total_price, item.salvage_value) : 0;
+  const isProfitableSold = isSold && isProfitableSale(item.total_price, item.salvage_value);
 
-  // 分期溢价和 IRR——仅适用于 unredeemed 物品
   const installmentPremium = isUnredeemed
     ? calculateInstallmentPremium(
         item.total_price,
@@ -273,9 +269,15 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       )
     : 0;
 
+  const highlightLabel = isUnredeemed ? '影子日供' : isProfitableSold ? '已盈利' : '日均成本';
+  const highlightValue = isUnredeemed
+    ? dailyDebt
+    : isProfitableSold
+      ? realizedProfit
+      : dailyCost;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 顶部卡片 */}
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <EntityCover
@@ -293,35 +295,25 @@ export function ItemDetailScreen({ route, navigation }: Props) {
           <StatusBadge
             status={item.status}
             labelOverride={
-              isArchived
-                ? isSold
-                  ? '已售出'
-                  : '已停用'
-                : undefined
+              isArchived ? (isSold ? '已售出' : '已停用') : undefined
             }
           />
         </View>
       </View>
 
-      {/* 关键数值高亮 */}
       <View
         style={[
           styles.highlightCard,
           isUnredeemed && { backgroundColor: THEME.colors.danger },
         ]}
       >
-        <Text style={styles.highlightLabel}>
-          {isUnredeemed ? '影子日供' : '日均成本'}
-        </Text>
-        <Text style={styles.highlightValue}>
-          {formatCurrency(isUnredeemed ? dailyDebt : dailyCost)}
-        </Text>
+        <Text style={styles.highlightLabel}>{highlightLabel}</Text>
+        <Text style={styles.highlightValue}>{formatCurrency(highlightValue)}</Text>
         {!isUnredeemed && (
           <Text style={styles.highlightSub}>激活 {activeDays} 天</Text>
         )}
       </View>
 
-      {/* 详细信息 */}
       <View style={styles.card}>
         <InfoRow label="总金额" value={formatCurrency(item.total_price)} />
         <InfoRow label="购买日期" value={formatDate(item.buy_date)} />
@@ -336,8 +328,9 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         {!isUnredeemed && (
           <>
             <InfoRow label="激活天数" value={`${activeDays} 天`} />
-            {isSold && (
-              <InfoRow label="卖出价" value={formatCurrency(item.salvage_value)} />
+            {isSold && <InfoRow label="卖出价" value={formatCurrency(item.salvage_value)} />}
+            {isProfitableSold && (
+              <InfoRow label="盈利金额" value={formatCurrency(realizedProfit)} />
             )}
           </>
         )}
@@ -357,7 +350,6 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         )}
       </View>
 
-      {/* 分期物品血本警示卡 */}
       {isUnredeemed && installmentPremium > 0 && (
         <View style={styles.bloodCard}>
           <Text style={styles.bloodTitle}>🩸 分期血本警示</Text>
@@ -372,11 +364,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               <Text style={styles.bloodValue}>{installmentIRR.toFixed(1)}%</Text>
             </View>
           </View>
-          <Text style={styles.bloodHint}>相比全款购买，选择分期使你将额外支出以上金额</Text>
+          <Text style={styles.bloodHint}>
+            相比全款购买，选择分期会让你承担额外成本。
+          </Text>
         </View>
       )}
 
-      {/* 操作按钮 */}
       <View style={styles.actions}>
         <BrutalButton
           title="编辑"
@@ -445,7 +438,6 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         />
       </View>
 
-      {/* 赎身成功动画 */}
       <Modal
         visible={redeemModalVisible}
         transparent
@@ -460,19 +452,18 @@ export function ItemDetailScreen({ route, navigation }: Props) {
             ]}
           >
             <Animated.Text style={[styles.redeemText, { color: redeemTextColor }]}>
-              🔗 锁链碎裂！赎身成功！
+              🔓 链锁破裂，赎身成功
             </Animated.Text>
           </Animated.View>
         </View>
       </Modal>
 
-      {/* 停用弹窗 */}
       <Modal visible={pauseModalVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>停用资产</Text>
             <Text style={styles.modalDesc}>
-              停用后将暂停「激活天数」累计，并从首页「日均成本」统计中移除；之后可随时恢复使用。
+              停用后将暂停“激活天数”累计，并从首页“今日日均成本”统计中移除；之后可随时恢复使用。
             </Text>
             <DatePickerField
               label="停用日期"
@@ -500,13 +491,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         </View>
       </Modal>
 
-      {/* 恢复使用弹窗 */}
       <Modal visible={resumeModalVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>恢复使用</Text>
             <Text style={styles.modalDesc}>
-              恢复后将从所选日期开始继续累计「激活天数」，并重新计入首页统计。
+              恢复后将从所选日期开始继续累计“激活天数”，并重新计入首页统计。
             </Text>
             <DatePickerField
               label="恢复日期"
@@ -534,13 +524,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         </View>
       </Modal>
 
-      {/* 售出弹窗 */}
       <Modal visible={sellModalVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>售出资产</Text>
             <Text style={styles.modalDesc}>
-              售出后不可恢复，将记录卖出日期与卖出价（卖出价 ≤ 原价）。
+              售出后不可恢复，将记录卖出日期与卖出价。若卖出价高于买入价，会按“已盈利”展示，不再显示负日均成本。
             </Text>
             <DatePickerField
               label="售出日期"
@@ -647,7 +636,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: THEME.spacing.md,
   },
-  headerInfo: { flex: 1 },
+  headerInfo: {
+    flex: 1,
+  },
   name: {
     fontSize: THEME.fontSize.xl,
     fontWeight: '800',
@@ -680,6 +671,48 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.sm,
     color: '#FFFFFFCC',
     marginTop: 4,
+  },
+  bloodCard: {
+    borderWidth: 2,
+    borderColor: THEME.colors.danger,
+    borderRadius: THEME.borderRadius,
+    backgroundColor: '#FFF0EE',
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.lg,
+  },
+  bloodTitle: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    color: THEME.colors.dangerDark,
+    marginBottom: THEME.spacing.md,
+  },
+  bloodRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginBottom: THEME.spacing.md,
+  },
+  bloodItem: {
+    flex: 1,
+  },
+  bloodLabel: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginBottom: 4,
+  },
+  bloodValue: {
+    fontSize: THEME.fontSize.lg,
+    fontWeight: '800',
+    color: THEME.colors.dangerDark,
+  },
+  bloodDivider: {
+    width: 1,
+    backgroundColor: THEME.colors.danger,
+    marginHorizontal: THEME.spacing.md,
+  },
+  bloodHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
   },
   actions: {
     gap: THEME.spacing.md,
@@ -730,56 +763,12 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.sm,
     color: THEME.colors.textSecondary,
     marginBottom: THEME.spacing.lg,
+    lineHeight: 20,
   },
   modalActions: {
-    marginTop: THEME.spacing.md,
     gap: THEME.spacing.sm,
   },
   modalBtn: {
     width: '100%',
-  },
-  bloodCard: {
-    backgroundColor: '#FFF0EE',
-    borderWidth: 2,
-    borderColor: THEME.colors.danger,
-    borderRadius: THEME.borderRadius,
-    padding: THEME.spacing.lg,
-    marginBottom: THEME.spacing.lg,
-  },
-  bloodTitle: {
-    fontSize: THEME.fontSize.sm,
-    fontWeight: '800',
-    color: THEME.colors.dangerDark,
-    marginBottom: THEME.spacing.sm,
-  },
-  bloodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: THEME.spacing.sm,
-  },
-  bloodItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  bloodDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: THEME.colors.danger + '60',
-    marginHorizontal: THEME.spacing.sm,
-  },
-  bloodLabel: {
-    fontSize: THEME.fontSize.xs,
-    color: THEME.colors.textSecondary,
-    marginBottom: 2,
-  },
-  bloodValue: {
-    fontSize: THEME.fontSize.lg,
-    fontWeight: '800',
-    color: THEME.colors.dangerDark,
-  },
-  bloodHint: {
-    fontSize: THEME.fontSize.xs,
-    color: THEME.colors.textSecondary,
-    lineHeight: 16,
   },
 });

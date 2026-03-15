@@ -47,3 +47,4 @@ output/playwright/
 
 # Release artifacts (local only)
 DayValue-v*.apk
+.gradle-dist/

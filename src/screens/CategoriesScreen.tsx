@@ -1,62 +1,28 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Dimensions,
-  View,
-  Text,
+  Alert,
   FlatList,
+  Modal,
+  StyleSheet,
+  Text,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  Modal,
-  Alert,
-  StyleSheet,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CategoryInfo, CategoryType, RootStackParamList } from '../types';
 import { useCategories } from '../contexts/CategoriesContext';
 import { THEME } from '../utils/constants';
-import { BrutalButton, PixelInput } from '../components';
+import { DEFAULT_ICON, findIconOption } from '../utils/iconLibrary';
+import { BrutalButton, IconPicker, PixelInput } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Categories'>;
-
-const ICON_GRID_MAX_HEIGHT = Math.min(Dimensions.get('window').height * 0.35, 320);
-
-const ICON_PRESETS: string[] = [
-  // 数码/电子
-  '📱', '💻', '🖥️', '⌨️', '🖨️', '📷',
-  // 家居/生活
-  '🏠', '🛏️', '🪴', '🧺', '🔑', '🧹',
-  // 交通/出行
-  '🚗', '🛵', '🚌', '✈️', '🚲', '🧳',
-  // 服饰/时尚
-  '👕', '👗', '👟', '🧢', '👜', '💍',
-  // 娱乐/游戏
-  '🎮', '🎧', '🎬', '🎵', '🎸', '🎹',
-  // 餐饮/美食
-  '🍔', '🍕', '🍜', '🥤', '🍰', '☕',
-  // 学习/办公
-  '📚', '🖊️', '📎', '🗂️', '📝', '🧠',
-  // 运动/健身
-  '⚽', '🏊', '🎿', '🧘', '🏋️', '🚴',
-  // 医疗/健康
-  '🏥', '💊', '🩺', '🩹', '🧬', '💉',
-  // 宠物
-  '🐱', '🐶', '🐾', '🐟', '🐦', '🐰',
-  // 美妆/个护
-  '💄', '💅', '🧴', '💆', '🪞', '🧼',
-  // 理财/金融
-  '💰', '💳', '🏦', '📈', '🪙', '🧾',
-  // 旅行/户外
-  '🏖️', '🗺️', '⛺', '🌄', '🏔️', '🎒',
-  // 其他常用
-  '📦', '🎁', '🎂', '🔔', '⭐', '❤️',
-  '💿', '🧩', '💡', '🧰', '🧪', '🧯',
-];
 
 function typeLabel(type: CategoryType) {
   if (type === 'item') return '物品分类';
   if (type === 'subscription') return '订阅分类';
-  return '储值分类';
+  return '卡包分类';
 }
 
 export function CategoriesScreen({}: Props) {
@@ -74,7 +40,7 @@ export function CategoriesScreen({}: Props) {
   const [createVisible, setCreateVisible] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryInfo | null>(null);
   const [newName, setNewName] = useState('');
-  const [newIcon, setNewIcon] = useState(ICON_PRESETS[0]);
+  const [newIcon, setNewIcon] = useState(DEFAULT_ICON);
   const [saving, setSaving] = useState(false);
 
   const categories = useMemo<CategoryInfo[]>(
@@ -87,6 +53,18 @@ export function CategoriesScreen({}: Props) {
     [activeType, itemCategories, storedCardCategories, subscriptionCategories],
   );
 
+  function resetCreateModal() {
+    setCreateVisible(false);
+    setNewName('');
+    setNewIcon(DEFAULT_ICON);
+  }
+
+  function resetEditModal() {
+    setEditingCategory(null);
+    setNewName('');
+    setNewIcon(DEFAULT_ICON);
+  }
+
   async function handleCreate() {
     const name = newName.trim();
     if (!name) {
@@ -96,9 +74,7 @@ export function CategoriesScreen({}: Props) {
     setSaving(true);
     try {
       await createCategory({ name, icon: newIcon, type: activeType });
-      setCreateVisible(false);
-      setNewName('');
-      setNewIcon(ICON_PRESETS[0]);
+      resetCreateModal();
     } catch {
       Alert.alert('错误', '新增分类失败，请重试');
     } finally {
@@ -110,12 +86,6 @@ export function CategoriesScreen({}: Props) {
     setEditingCategory(category);
     setNewName(category.name);
     setNewIcon(category.icon);
-  }
-
-  function resetEditModal() {
-    setEditingCategory(null);
-    setNewName('');
-    setNewIcon(ICON_PRESETS[0]);
   }
 
   async function handleUpdate() {
@@ -145,7 +115,7 @@ export function CategoriesScreen({}: Props) {
   async function handleDelete() {
     if (!editingCategory) return;
     if (editingCategory.id === 'other') {
-      Alert.alert('提示', '“其他”分类不可删除');
+      Alert.alert('提示', '系统兜底分类不可删除');
       return;
     }
     if (!editingCategory.id.startsWith('cat_')) {
@@ -220,7 +190,10 @@ export function CategoriesScreen({}: Props) {
         </View>
 
         <View style={styles.headerRow}>
-          <Text style={styles.title}>{typeLabel(activeType)}</Text>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.title}>{typeLabel(activeType)}</Text>
+            <Text style={styles.subtitle}>分类用于统计归类，默认图标只负责预填与图例显示</Text>
+          </View>
           <BrutalButton
             title="新增"
             onPress={() => setCreateVisible(true)}
@@ -233,77 +206,67 @@ export function CategoriesScreen({}: Props) {
           data={categories}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => openEditModal(item)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.iconBox}>
-                <Text style={styles.iconText}>{item.icon}</Text>
-              </View>
-              <View style={styles.rowInfo}>
-                <Text style={styles.rowName}>{item.name}</Text>
-                <Text style={styles.rowId}>{item.id}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
+          renderItem={({ item }) => {
+            const iconOption = findIconOption(item.icon);
+            return (
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => openEditModal(item)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.iconBox}>
+                  <Text style={styles.iconText}>{item.icon}</Text>
+                </View>
+                <View style={styles.rowInfo}>
+                  <Text style={styles.rowName}>{item.name}</Text>
+                  <Text style={styles.rowMeta}>
+                    默认图标 · {iconOption?.label ?? '自定义'} · {item.id}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
         />
 
         <Modal visible={createVisible} transparent animationType="fade">
-          <TouchableWithoutFeedback onPress={() => setCreateVisible(false)}>
+          <TouchableWithoutFeedback onPress={resetCreateModal}>
             <View style={styles.overlay}>
               <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>新增分类</Text>
+                  <Text style={styles.modalTitle}>新增分类</Text>
 
-              <PixelInput
-                label="分类名称"
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="例如：咖啡"
-              />
+                  <PixelInput
+                    label="分类名称"
+                    value={newName}
+                    onChangeText={setNewName}
+                    placeholder="例如：影音设备"
+                  />
 
-              <Text style={styles.presetLabel}>选择图标</Text>
-              <FlatList
-                data={ICON_PRESETS}
-                numColumns={6}
-                keyExtractor={v => v}
-                contentContainerStyle={styles.iconGrid}
-                style={{ maxHeight: ICON_GRID_MAX_HEIGHT }}
-                showsVerticalScrollIndicator
-                persistentScrollbar
-                renderItem={({ item }) => {
-                  const active = item === newIcon;
-                  return (
-                    <TouchableOpacity
-                      style={[styles.iconPick, active && styles.iconPickActive]}
-                      onPress={() => setNewIcon(item)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.iconPickText}>{item}</Text>
-                    </TouchableOpacity>
-                  );
-                }}
-              />
+                  <IconPicker
+                    label="默认图标"
+                    value={newIcon}
+                    onSelect={setNewIcon}
+                    title="选择默认图标"
+                    helperText="默认图标会用于新记录预填和统计图例，单条记录仍可单独改图标。"
+                  />
 
-              <View style={styles.modalActions}>
-                <BrutalButton
-                  title="取消"
-                  onPress={() => setCreateVisible(false)}
-                  variant="outline"
-                  size="md"
-                  style={styles.modalBtnLeft}
-                />
-                <BrutalButton
-                  title="保存"
-                  onPress={handleCreate}
-                  loading={saving}
-                  variant="primary"
-                  size="md"
-                  style={styles.modalBtnRight}
-                />
-              </View>
+                  <View style={styles.modalActions}>
+                    <BrutalButton
+                      title="取消"
+                      onPress={resetCreateModal}
+                      variant="outline"
+                      size="md"
+                      style={styles.modalBtnLeft}
+                    />
+                    <BrutalButton
+                      title="保存"
+                      onPress={handleCreate}
+                      loading={saving}
+                      variant="primary"
+                      size="md"
+                      style={styles.modalBtnRight}
+                    />
+                  </View>
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -315,62 +278,47 @@ export function CategoriesScreen({}: Props) {
             <View style={styles.overlay}>
               <TouchableWithoutFeedback onPress={() => {}}>
                 <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>编辑分类</Text>
+                  <Text style={styles.modalTitle}>编辑分类</Text>
 
-              <PixelInput
-                label="分类名称"
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="例如：咖啡"
-              />
+                  <PixelInput
+                    label="分类名称"
+                    value={newName}
+                    onChangeText={setNewName}
+                    placeholder="例如：影音设备"
+                  />
 
-              <Text style={styles.presetLabel}>选择图标</Text>
-              <FlatList
-                data={ICON_PRESETS}
-                numColumns={6}
-                keyExtractor={v => `edit-${v}`}
-                contentContainerStyle={styles.iconGrid}
-                style={{ maxHeight: ICON_GRID_MAX_HEIGHT }}
-                showsVerticalScrollIndicator
-                persistentScrollbar
-                renderItem={({ item }) => {
-                  const active = item === newIcon;
-                  return (
-                    <TouchableOpacity
-                      style={[styles.iconPick, active && styles.iconPickActive]}
-                      onPress={() => setNewIcon(item)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.iconPickText}>{item}</Text>
-                    </TouchableOpacity>
-                  );
-                }}
-              />
+                  <IconPicker
+                    label="默认图标"
+                    value={newIcon}
+                    onSelect={setNewIcon}
+                    title="选择默认图标"
+                    helperText="默认图标只影响新记录预填和统计图例，不会强制覆盖已有记录。"
+                  />
 
-              <View style={styles.modalActions}>
-                <BrutalButton
-                  title="删除"
-                  onPress={handleDelete}
-                  variant="danger"
-                  size="md"
-                  style={styles.modalBtnLeft}
-                />
-                <BrutalButton
-                  title="保存"
-                  onPress={handleUpdate}
-                  loading={saving}
-                  variant="primary"
-                  size="md"
-                  style={styles.modalBtnRight}
-                />
-              </View>
-              <BrutalButton
-                title="取消"
-                onPress={resetEditModal}
-                variant="outline"
-                size="md"
-                style={styles.modalCloseBtn}
-              />
+                  <View style={styles.modalActions}>
+                    <BrutalButton
+                      title="删除"
+                      onPress={handleDelete}
+                      variant="danger"
+                      size="md"
+                      style={styles.modalBtnLeft}
+                    />
+                    <BrutalButton
+                      title="保存"
+                      onPress={handleUpdate}
+                      loading={saving}
+                      variant="primary"
+                      size="md"
+                      style={styles.modalBtnRight}
+                    />
+                  </View>
+                  <BrutalButton
+                    title="取消"
+                    onPress={resetEditModal}
+                    variant="outline"
+                    size="md"
+                    style={styles.modalCloseBtn}
+                  />
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -415,13 +363,23 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: THEME.spacing.md,
+    gap: THEME.spacing.md,
+  },
+  headerTextWrap: {
+    flex: 1,
   },
   title: {
     fontSize: THEME.fontSize.xl,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
+  },
+  subtitle: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginTop: 4,
+    lineHeight: 18,
   },
   listContent: {
     paddingBottom: 24,
@@ -446,14 +404,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: THEME.spacing.md,
   },
-  iconText: { fontSize: 22 },
-  rowInfo: { flex: 1 },
+  iconText: {
+    fontSize: 22,
+  },
+  rowInfo: {
+    flex: 1,
+  },
   rowName: {
     fontSize: THEME.fontSize.lg,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
   },
-  rowId: {
+  rowMeta: {
     fontSize: THEME.fontSize.xs,
     color: THEME.colors.textSecondary,
     marginTop: 2,
@@ -481,37 +443,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: THEME.spacing.lg,
   },
-  presetLabel: {
-    marginTop: THEME.spacing.sm,
-    marginBottom: THEME.spacing.sm,
-    fontSize: THEME.fontSize.sm,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-  },
-  iconGrid: {
-    paddingBottom: THEME.spacing.sm,
-  },
-  iconPick: {
-    width: '16.66%',
-    aspectRatio: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: THEME.borderRadius,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  iconPickActive: {
-    borderColor: THEME.colors.primary,
-    backgroundColor: THEME.colors.primaryLight + '20',
-  },
-  iconPickText: { fontSize: 20 },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: THEME.spacing.lg,
   },
-  modalBtnLeft: { flex: 1, marginRight: THEME.spacing.sm },
-  modalBtnRight: { flex: 1, marginLeft: THEME.spacing.sm },
+  modalBtnLeft: {
+    flex: 1,
+    marginRight: THEME.spacing.sm,
+  },
+  modalBtnRight: {
+    flex: 1,
+    marginLeft: THEME.spacing.sm,
+  },
   modalCloseBtn: {
     width: '100%',
     marginTop: THEME.spacing.sm,

@@ -4,6 +4,7 @@ export { PixelInput } from './PixelInput';
 export { StatusBadge } from './StatusBadge';
 export { EmptyState } from './EmptyState';
 export { CategoryPicker } from './CategoryPicker';
+export { IconPicker } from './IconPicker';
 export { DatePickerField } from './DatePickerField';
 export { EntityCover } from './EntityCover';
 export { ImagePickerField } from './ImagePickerField';
@@ -14,3 +15,14 @@ export { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 export type { CardVariant } from './CardShell';
 export { PixelGridBackground } from './PixelGridBackground';
 export { default as CustomSplashScreen } from './CustomSplashScreen';
+export { AppBottomSheet } from './AppBottomSheet';
+export type { AppBottomSheetProps } from './AppBottomSheet';
+export { AssetFilterChip } from './AssetFilterChip';
+export type { AssetFilterChipProps } from './AssetFilterChip';
+export { AssetSectionToolbar } from './AssetSectionToolbar';
+export { AssetCategorySheet } from './AssetCategorySheet';
+export type {
+  AssetCategorySheetItem,
+  AssetCategorySheetProps,
+} from './AssetCategorySheet';
+export { DashboardHeroHeader } from './DashboardHeroHeader';

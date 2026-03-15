@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,11 +25,24 @@ import {
   calculateSubscriptionDailyCost,
   calculateDailyDebt,
   calculateStoredPrincipal,
+  calculateRealizedProfit,
   calculateOneTimeItemActiveDays,
+  isProfitableSale,
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
-import { ItemCard, SubscriptionCard, EmptyState, BrutalButton, StoredCardCard } from '../components';
+import { useCategories } from '../contexts/CategoriesContext';
+import {
+  ItemCard,
+  SubscriptionCard,
+  EmptyState,
+  BrutalButton,
+  StoredCardCard,
+  AppBottomSheet,
+  AssetCategorySheet,
+  AssetSectionToolbar,
+  DashboardHeroHeader,
+} from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
@@ -236,6 +249,7 @@ function renderGridRows<T>(
 export function DashboardScreen({ navigation }: Props) {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
+  const { itemCategories } = useCategories();
 
   const [activeTab, setActiveTab] = useState<TabKey>('assets');
   const [items, setItems] = useState<OneTimeItem[]>([]);
@@ -244,6 +258,8 @@ export function DashboardScreen({ navigation }: Props) {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [sortSheetTarget, setSortSheetTarget] = useState<TabKey | null>(null);
+  const [selectedAssetCategoryId, setSelectedAssetCategoryId] = useState<string | null>(null);
+  const [assetFilterSheetVisible, setAssetFilterSheetVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedCards, setShowArchivedCards] = useState(false);
 
@@ -336,8 +352,21 @@ export function DashboardScreen({ navigation }: Props) {
     useCallback(() => {
       void loadData();
       void loadPreferences();
+      return () => {
+        setSelectedAssetCategoryId(null);
+        setAssetFilterSheetVisible(false);
+      };
     }, [loadData, loadPreferences]),
   );
+
+  useEffect(() => {
+    if (
+      selectedAssetCategoryId !== null &&
+      !itemCategories.some(category => category.id === selectedAssetCategoryId)
+    ) {
+      setSelectedAssetCategoryId(null);
+    }
+  }, [itemCategories, selectedAssetCategoryId]);
 
   const persistPreference = useCallback((key: string, value: string) => {
     void setPreference(db, key, value).catch(error => {
@@ -443,21 +472,79 @@ export function DashboardScreen({ navigation }: Props) {
     [archivedStoredCards, storedCardSortDirection, storedCardSortField],
   );
 
-  const pausedItems = useMemo(
-    () => sortedArchivedItems.filter(item => (item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused')) !== 'sold'),
-    [sortedArchivedItems],
-  );
-  const soldItems = useMemo(
-    () => sortedArchivedItems.filter(item => (item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused')) === 'sold'),
-    [sortedArchivedItems],
+  const matchesSelectedAssetCategory = useCallback((item: OneTimeItem) => {
+    if (selectedAssetCategoryId === null) {
+      return true;
+    }
+
+    return (item.category ?? 'other') === selectedAssetCategoryId;
+  }, [selectedAssetCategoryId]);
+
+  const selectedAssetCategory = useMemo(
+    () =>
+      selectedAssetCategoryId === null
+        ? null
+        : itemCategories.find(category => category.id === selectedAssetCategoryId) ?? null,
+    [itemCategories, selectedAssetCategoryId],
   );
 
-  const totalAssetDailyCost = useMemo(() => {
-    return activeItems.reduce((sum, item) => {
+  const activeAssetCategoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    activeItems.forEach(item => {
+      const categoryId = item.category ?? 'other';
+      counts.set(categoryId, (counts.get(categoryId) ?? 0) + 1);
+    });
+
+    return counts;
+  }, [activeItems]);
+
+  const activeAssetCategoriesForSheet = useMemo(
+    () =>
+      itemCategories
+        .filter(category => {
+          const count = activeAssetCategoryCounts.get(category.id) ?? 0;
+          return count > 0 || category.id === selectedAssetCategoryId;
+        })
+        .map(category => ({
+          ...category,
+          count: activeAssetCategoryCounts.get(category.id) ?? 0,
+        })),
+    [activeAssetCategoryCounts, itemCategories, selectedAssetCategoryId],
+  );
+
+  const filteredActiveItems = useMemo(
+    () => sortedActiveItems.filter(matchesSelectedAssetCategory),
+    [matchesSelectedAssetCategory, sortedActiveItems],
+  );
+  const filteredArchivedItems = useMemo(
+    () => sortedArchivedItems.filter(matchesSelectedAssetCategory),
+    [matchesSelectedAssetCategory, sortedArchivedItems],
+  );
+  const filteredPausedItems = useMemo(
+    () => filteredArchivedItems.filter(item => (item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused')) !== 'sold'),
+    [filteredArchivedItems],
+  );
+  const filteredSoldItems = useMemo(
+    () => filteredArchivedItems.filter(item => (item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused')) === 'sold'),
+    [filteredArchivedItems],
+  );
+
+  const filteredTotalAssetDailyCost = useMemo(() => {
+    return filteredActiveItems.reduce((sum, item) => {
       const activeDays = calculateOneTimeItemActiveDays(item);
       return sum + calculateDailyCost(item.total_price, 0, activeDays);
     }, 0);
-  }, [activeItems]);
+  }, [filteredActiveItems]);
+
+  const filteredRealizedProfit = useMemo(() => {
+    return filteredSoldItems.reduce((sum, item) => {
+      if (!isProfitableSale(item.total_price, item.salvage_value)) {
+        return sum;
+      }
+      return sum + calculateRealizedProfit(item.total_price, item.salvage_value);
+    }, 0);
+  }, [filteredSoldItems]);
 
   const totalSubscriptionCost = useMemo(() => {
     return activeSubscriptions.reduce(
@@ -504,6 +591,19 @@ export function DashboardScreen({ navigation }: Props) {
       storedCardSortDirection,
     );
   }, [storedCardSortDirection, storedCardSortField]);
+
+  const isAssetFiltered = selectedAssetCategory !== null;
+  const assetHeroSummary = useMemo(() => {
+    if (selectedAssetCategory) {
+      return `共 ${filteredActiveItems.length} 件${selectedAssetCategory.name}资产`;
+    }
+
+    if (filteredRealizedProfit > 0) {
+      return `共 ${filteredActiveItems.length} 件在用资产 · 累计已盈利 ${formatCurrency(filteredRealizedProfit)}`;
+    }
+
+    return `共 ${filteredActiveItems.length} 件在用资产 · 数字越低越回本`;
+  }, [filteredActiveItems.length, filteredRealizedProfit, selectedAssetCategory]);
 
   const chrome = useMemo<DashboardChrome>(() => {
     if (activeTab === 'debts') {
@@ -679,13 +779,14 @@ export function DashboardScreen({ navigation }: Props) {
   };
 
   const renderAssetsTab = () => {
-    const hasActiveAssets = sortedActiveItems.length > 0;
-    const hasArchivedAssets = archivedItems.length > 0;
+    const hasActiveAssets = filteredActiveItems.length > 0;
+    const hasArchivedAssets = filteredArchivedItems.length > 0;
     const showHistoryFirst = !hasActiveAssets && hasArchivedAssets;
+    const emptyMessage = isAssetFiltered ? '该分类下还没有买断资产记录' : '还没有买断资产记录';
 
     return (
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        <SectionToolbar
+        <AssetSectionToolbar
           title="在用资产"
           sortSummary={assetSortSummary}
           layoutMode={assetLayoutMode}
@@ -700,15 +801,15 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.75}
           >
             <Text style={styles.historyToggleText}>
-              {showArchived ? '收起' : '显示'}停用/售出 ({archivedItems.length})
+              {showArchived ? '收起' : '显示'}停用/售出 ({filteredArchivedItems.length})
             </Text>
           </TouchableOpacity>
         )}
 
-        {hasActiveAssets && renderAssetList(sortedActiveItems)}
+        {hasActiveAssets && renderAssetList(filteredActiveItems)}
 
         {!hasActiveAssets && !hasArchivedAssets && (
-          <EmptyState message="还没有买断资产记录" icon="🧾" />
+          <EmptyState message={emptyMessage} icon="🧾" />
         )}
 
         {hasActiveAssets && hasArchivedAssets && (
@@ -718,22 +819,22 @@ export function DashboardScreen({ navigation }: Props) {
             activeOpacity={0.75}
           >
             <Text style={styles.historyToggleText}>
-              {showArchived ? '收起' : '显示'}停用/售出 ({archivedItems.length})
+              {showArchived ? '收起' : '显示'}停用/售出 ({filteredArchivedItems.length})
             </Text>
           </TouchableOpacity>
         )}
 
-        {showArchived && pausedItems.length > 0 && (
+        {showArchived && filteredPausedItems.length > 0 && (
           <>
-            <Text style={styles.subSectionTitle}>已停用 ({pausedItems.length})</Text>
-            {renderAssetList(pausedItems)}
+            <Text style={styles.subSectionTitle}>已停用 ({filteredPausedItems.length})</Text>
+            {renderAssetList(filteredPausedItems)}
           </>
         )}
 
-        {showArchived && soldItems.length > 0 && (
+        {showArchived && filteredSoldItems.length > 0 && (
           <>
-            <Text style={styles.subSectionTitle}>已售出 ({soldItems.length})</Text>
-            {renderAssetList(soldItems)}
+            <Text style={styles.subSectionTitle}>已售出 ({filteredSoldItems.length})</Text>
+            {renderAssetList(filteredSoldItems)}
           </>
         )}
       </ScrollView>
@@ -832,81 +933,25 @@ export function DashboardScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <StatusBar style="light" translucent backgroundColor="transparent" animated />
       <View style={styles.container}>
-        <View
-          style={[
-            styles.hero,
-            {
-              backgroundColor: chrome.backgroundColor,
-              borderBottomColor: chrome.borderColor,
-              paddingTop: insets.top + THEME.spacing.xl,
-            },
-          ]}
-        >
-          <View style={styles.heroTitleRow}>
-            <Text style={styles.heroTitle}>DayValue</Text>
-            <View style={styles.heroActions}>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => navigation.navigate('Statistics')}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.iconBtnText}>📊</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => navigation.navigate('Settings')}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.iconBtnText}>⚙️</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.helpBtn}
-                onPress={() => setHelpModalVisible(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.helpBtnText}>?</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {activeTab === 'assets' && (
-            <>
-              <Text style={styles.heroSubtitle}>今日日均成本 ↓</Text>
-              <Text style={styles.heroCost}>
-                {formatCurrency(totalAssetDailyCost)}
-                <Text style={styles.heroUnit}>/天</Text>
-              </Text>
-              <Text style={styles.heroHint}>
-                共 {activeItems.length} 件在用资产 · 数字越低越回本
-              </Text>
-            </>
-          )}
-
-          {activeTab === 'debts' && (
-            <>
-              <Text style={[styles.heroSubtitle, styles.heroSubtitleDebt]}>今日固定流失</Text>
-              <Text style={styles.heroCost}>
-                {formatCurrency(totalDebtDailyCost)}
-                <Text style={styles.heroUnit}>/天</Text>
-              </Text>
-              <Text style={styles.heroHint}>
-                分期日供 {formatCurrency(totalInstallmentDebt)} · 订阅日均 {formatCurrency(totalSubscriptionCost)}
-              </Text>
-            </>
-          )}
-
-          {activeTab === 'stored_cards' && (
-            <>
-              <Text style={[styles.heroSubtitle, styles.heroSubtitleStored]}>实际沉睡本金 ↓</Text>
-              <Text style={[styles.heroCost, styles.heroCostStored]}>
-                {formatCurrency(totalPrincipal)}
-              </Text>
-              <Text style={styles.heroHintStored}>
-                共 {activeStoredCards.length} 张在用卡包 · 越早更新越不容易遗忘
-              </Text>
-            </>
-          )}
-        </View>
+        <DashboardHeroHeader
+          activeTab={activeTab}
+          topPadding={insets.top + THEME.spacing.xl}
+          chrome={chrome}
+          assetDailyCost={filteredTotalAssetDailyCost}
+          assetSummary={assetHeroSummary}
+          selectedAssetCategory={selectedAssetCategory}
+          isAssetFiltered={isAssetFiltered}
+          totalDebtDailyCost={totalDebtDailyCost}
+          totalInstallmentDebt={totalInstallmentDebt}
+          totalSubscriptionCost={totalSubscriptionCost}
+          totalPrincipal={totalPrincipal}
+          activeStoredCardCount={activeStoredCards.length}
+          onPressStatistics={() => navigation.navigate('Statistics')}
+          onPressSettings={() => navigation.navigate('Settings')}
+          onPressHelp={() => setHelpModalVisible(true)}
+          onPressAssetFilterTrigger={() => setAssetFilterSheetVisible(true)}
+          onClearAssetFilter={() => setSelectedAssetCategoryId(null)}
+        />
 
         <View style={styles.tabs}>
           <TouchableOpacity
@@ -1033,92 +1078,97 @@ export function DashboardScreen({ navigation }: Props) {
           </View>
         </Modal>
 
-        <Modal visible={sortSheetConfig !== null} transparent animationType="fade">
-          <TouchableOpacity
-            style={styles.sheetOverlay}
-            onPress={() => setSortSheetTarget(null)}
-            activeOpacity={1}
-          >
+        <AssetCategorySheet
+          visible={assetFilterSheetVisible}
+          selectedCategoryId={selectedAssetCategoryId}
+          categories={activeAssetCategoriesForSheet}
+          onClose={() => setAssetFilterSheetVisible(false)}
+          onSelect={categoryId => {
+            setSelectedAssetCategoryId(categoryId);
+            setAssetFilterSheetVisible(false);
+          }}
+          onPressManageCategories={() => {
+            setAssetFilterSheetVisible(false);
+            navigation.navigate('Categories');
+          }}
+        />
+
+        <AppBottomSheet
+          visible={sortSheetConfig !== null}
+          title={sortSheetConfig?.title}
+          onClose={() => setSortSheetTarget(null)}
+          footer={(
+            <BrutalButton
+              title="完成"
+              onPress={() => setSortSheetTarget(null)}
+              variant="primary"
+              size="sm"
+              style={styles.sheetCloseButton}
+            />
+          )}
+        >
+          <Text style={styles.sheetSectionTitle}>按什么排</Text>
+          <View style={styles.sheetOptionRow}>
+            {sortSheetConfig?.fields.map(option => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.sheetOptionChip,
+                  sortSheetConfig?.currentField === option.value && styles.sheetOptionChipActive,
+                ]}
+                onPress={() => sortSheetConfig?.onSelectField(option.value)}
+                activeOpacity={0.75}
+              >
+                <Text
+                  style={[
+                    styles.sheetOptionText,
+                    sortSheetConfig?.currentField === option.value && styles.sheetOptionTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.sheetSectionTitle}>顺序</Text>
+          <View style={styles.sheetOptionRow}>
             <TouchableOpacity
-              style={styles.bottomSheet}
-              onPress={() => {}}
-              activeOpacity={1}
+              style={[
+                styles.sheetOptionChip,
+                sortSheetConfig?.currentDirection === 'desc' && styles.sheetOptionChipActive,
+              ]}
+              onPress={() => sortSheetConfig?.onSelectDirection('desc')}
+              activeOpacity={0.75}
             >
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>{sortSheetConfig?.title}</Text>
-
-              <Text style={styles.sheetSectionTitle}>按什么排</Text>
-              <View style={styles.sheetOptionRow}>
-                {sortSheetConfig?.fields.map(option => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.sheetOptionChip,
-                      sortSheetConfig.currentField === option.value && styles.sheetOptionChipActive,
-                    ]}
-                    onPress={() => sortSheetConfig.onSelectField(option.value)}
-                    activeOpacity={0.75}
-                  >
-                    <Text
-                      style={[
-                        styles.sheetOptionText,
-                        sortSheetConfig.currentField === option.value && styles.sheetOptionTextActive,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.sheetSectionTitle}>顺序</Text>
-              <View style={styles.sheetOptionRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.sheetOptionChip,
-                    sortSheetConfig?.currentDirection === 'desc' && styles.sheetOptionChipActive,
-                  ]}
-                  onPress={() => sortSheetConfig?.onSelectDirection('desc')}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    style={[
-                      styles.sheetOptionText,
-                      sortSheetConfig?.currentDirection === 'desc' && styles.sheetOptionTextActive,
-                    ]}
-                  >
-                    降序
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.sheetOptionChip,
-                    sortSheetConfig?.currentDirection === 'asc' && styles.sheetOptionChipActive,
-                  ]}
-                  onPress={() => sortSheetConfig?.onSelectDirection('asc')}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    style={[
-                      styles.sheetOptionText,
-                      sortSheetConfig?.currentDirection === 'asc' && styles.sheetOptionTextActive,
-                    ]}
-                  >
-                    升序
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <BrutalButton
-                title="完成"
-                onPress={() => setSortSheetTarget(null)}
-                variant="primary"
-                size="sm"
-                style={styles.sheetCloseButton}
-              />
+              <Text
+                style={[
+                  styles.sheetOptionText,
+                  sortSheetConfig?.currentDirection === 'desc' && styles.sheetOptionTextActive,
+                ]}
+              >
+                降序
+              </Text>
             </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
+            <TouchableOpacity
+              style={[
+                styles.sheetOptionChip,
+                sortSheetConfig?.currentDirection === 'asc' && styles.sheetOptionChipActive,
+              ]}
+              onPress={() => sortSheetConfig?.onSelectDirection('asc')}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={[
+                  styles.sheetOptionText,
+                  sortSheetConfig?.currentDirection === 'asc' && styles.sheetOptionTextActive,
+                ]}
+              >
+                升序
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </AppBottomSheet>
 
         <Modal visible={helpModalVisible} transparent animationType="fade">
           <TouchableOpacity
@@ -1197,89 +1247,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-  },
-  hero: {
-    backgroundColor: THEME.colors.primary,
-    paddingHorizontal: THEME.spacing.xl,
-    paddingBottom: THEME.spacing.lg,
-    borderBottomWidth: 2,
-    borderBottomColor: THEME.colors.borderDark,
-  },
-  heroTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  heroActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  heroTitle: {
-    fontSize: 20,
-    fontFamily: THEME.fontFamily.pixel,
-    color: '#FFFFFF',
-  },
-  iconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  iconBtnText: {
-    fontSize: 14,
-  },
-  helpBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  helpBtnText: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '700',
-  },
-  heroSubtitle: {
-    fontSize: THEME.fontSize.sm,
-    color: '#FFFFFFAA',
-    marginBottom: 4,
-    marginTop: 6,
-  },
-  heroSubtitleDebt: {
-    color: '#FFD8CC',
-  },
-  heroSubtitleStored: {
-    color: '#FFE89A',
-  },
-  heroCost: {
-    fontSize: 22,
-    fontFamily: THEME.fontFamily.pixel,
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  heroCostStored: {
-    color: '#FFE066',
-  },
-  heroUnit: {
-    fontSize: THEME.fontSize.sm,
-    fontFamily: undefined,
-  },
-  heroHint: {
-    fontSize: THEME.fontSize.xs,
-    color: '#FFFFFFCC',
-  },
-  heroHintStored: {
-    fontSize: THEME.fontSize.xs,
-    color: '#FFE89ACC',
-    fontWeight: '700',
   },
   tabs: {
     flexDirection: 'row',
@@ -1453,35 +1420,6 @@ const styles = StyleSheet.create({
   },
   modalBtn: {
     width: '100%',
-  },
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
-  },
-  bottomSheet: {
-    backgroundColor: THEME.colors.surface,
-    borderTopLeftRadius: THEME.borderRadius * 2,
-    borderTopRightRadius: THEME.borderRadius * 2,
-    borderWidth: 2,
-    borderColor: THEME.colors.borderDark,
-    paddingHorizontal: THEME.spacing.xl,
-    paddingTop: THEME.spacing.md,
-    paddingBottom: THEME.spacing.xl,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: THEME.colors.border,
-    marginBottom: THEME.spacing.md,
-  },
-  sheetTitle: {
-    fontSize: THEME.fontSize.lg,
-    fontWeight: '800',
-    color: THEME.colors.textPrimary,
-    marginBottom: THEME.spacing.md,
   },
   sheetSectionTitle: {
     fontSize: THEME.fontSize.sm,

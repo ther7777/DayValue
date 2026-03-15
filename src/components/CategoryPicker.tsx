@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View,
+  FlatList,
+  Modal,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  Modal,
-  FlatList,
-  StyleSheet,
+  TouchableWithoutFeedback,
+  View,
   type ViewStyle,
 } from 'react-native';
 import { THEME } from '../utils/constants';
@@ -48,51 +49,59 @@ export function CategoryPicker({ type, selectedId, onSelect, style }: CategoryPi
         onPress={() => setVisible(true)}
         activeOpacity={0.7}
       >
-        <Text style={styles.selectorText}>
-          {selected.icon}  {selected.name}
-        </Text>
-        <Text style={styles.arrow}>▼</Text>
+        <View style={styles.selectorMeta}>
+          <Text style={styles.selectorTitle}>{selected.name}</Text>
+          <Text style={styles.selectorHint}>用于统计归类</Text>
+        </View>
+        <View style={styles.selectorRight}>
+          <Text style={styles.selectorIcon}>{selected.icon}</Text>
+          <Text style={styles.arrow}>▾</Text>
+        </View>
       </TouchableOpacity>
 
       <Modal visible={visible} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={() => setVisible(false)}
-        >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>选择分类</Text>
-            <FlatList
-              data={listData}
-              numColumns={3}
-              keyExtractor={item => item.id}
-              contentContainerStyle={styles.grid}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.gridItem,
-                    item.id === selectedId && styles.gridItemActive,
-                  ]}
-                  onPress={() => {
-                    onSelect(item);
-                    setVisible(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.gridIcon}>{item.icon}</Text>
-                  <Text
-                    style={[
-                      styles.gridLabel,
-                      item.id === selectedId && styles.gridLabelActive,
-                    ]}
-                  >
-                    {item.name}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
+        <TouchableWithoutFeedback onPress={() => setVisible(false)}>
+          <View style={styles.overlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>选择分类</Text>
+                <FlatList
+                  data={listData}
+                  keyExtractor={item => item.id}
+                  contentContainerStyle={styles.list}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[
+                        styles.listItem,
+                        item.id === selectedId && styles.listItemActive,
+                      ]}
+                      onPress={() => {
+                        onSelect(item);
+                        setVisible(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.listItemMeta}>
+                        <Text
+                          style={[
+                            styles.listItemTitle,
+                            item.id === selectedId && styles.listItemTitleActive,
+                          ]}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text style={styles.listItemSubtitle}>统计与筛选将按这个分类归类</Text>
+                      </View>
+                      <View style={styles.listItemBadge}>
+                        <Text style={styles.listItemIcon}>{item.icon}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </TouchableOpacity>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -117,9 +126,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  selectorText: {
+  selectorMeta: {
+    flex: 1,
+  },
+  selectorTitle: {
     fontSize: THEME.fontSize.md,
+    fontWeight: '700',
     color: THEME.colors.textPrimary,
+  },
+  selectorHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  selectorRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: THEME.spacing.sm,
+  },
+  selectorIcon: {
+    fontSize: 18,
+    marginRight: THEME.spacing.xs,
   },
   arrow: {
     fontSize: 12,
@@ -145,33 +172,52 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: THEME.spacing.lg,
   },
-  grid: {
-    alignItems: 'center',
+  list: {
+    paddingBottom: THEME.spacing.sm,
   },
-  gridItem: {
-    width: '30%',
+  listItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: THEME.spacing.md,
     paddingVertical: THEME.spacing.md,
-    marginHorizontal: '1.5%',
     marginBottom: THEME.spacing.sm,
     borderRadius: THEME.borderRadius,
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.background,
   },
-  gridItemActive: {
+  listItemActive: {
     borderColor: THEME.colors.primary,
     backgroundColor: THEME.colors.primaryLight + '20',
   },
-  gridIcon: {
-    fontSize: 28,
-    marginBottom: 4,
+  listItemMeta: {
+    flex: 1,
   },
-  gridLabel: {
-    fontSize: THEME.fontSize.sm,
-    color: THEME.colors.textSecondary,
-  },
-  gridLabelActive: {
-    color: THEME.colors.primary,
+  listItemTitle: {
+    fontSize: THEME.fontSize.md,
     fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  listItemTitleActive: {
+    color: THEME.colors.primary,
+  },
+  listItemSubtitle: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  listItemBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.borderDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
+  },
+  listItemIcon: {
+    fontSize: 18,
   },
 });

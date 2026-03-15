@@ -9,7 +9,11 @@ import { PieChart } from 'react-native-chart-kit';
 import type { CategoryInfo, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
 import { getAllOneTimeItems, getAllStoredCards, getAllSubscriptions } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
-import { calculateDailyDebt, calculateStoredPrincipal, calculateSubscriptionDailyCost } from '../utils/calculations';
+import {
+  calculateDailyDebt,
+  calculateStoredPrincipal,
+  calculateSubscriptionDailyCost,
+} from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { EmptyState } from '../components';
@@ -37,9 +41,17 @@ const PALETTE = [
   '#74B9FF',
 ];
 
-function fallbackCategory(categoryId: string): CategoryInfo {
-  if (categoryId === 'other') return { id: 'other', name: '其他', icon: '📦' };
-  return { id: categoryId, name: categoryId, icon: '🏷️' };
+function fallbackCategory(
+  categoryId: string,
+  type: 'item' | 'subscription' | 'stored_card',
+): CategoryInfo {
+  if (categoryId === 'other') {
+    if (type === 'subscription') return { id: 'other', name: '其他服务', icon: '📦' };
+    if (type === 'stored_card') return { id: 'other', name: '其他卡包', icon: '💳' };
+    return { id: 'other', name: '其他资产', icon: '📦' };
+  }
+
+  return { id: categoryId, name: categoryId, icon: '📦' };
 }
 
 function buildPieSeries(
@@ -47,26 +59,26 @@ function buildPieSeries(
   resolveInfo: (categoryId: string) => CategoryInfo,
 ): PieSeriesItem[] {
   const entries = Array.from(sumsByCategoryId.entries())
-    .filter(([, v]) => v > 0)
-    .sort(([a], [b]) => a.localeCompare(b));
+    .filter(([, value]) => value > 0)
+    .sort(([left], [right]) => left.localeCompare(right));
 
-  return entries.map(([categoryId, value], idx) => {
+  return entries.map(([categoryId, value], index) => {
     const info = resolveInfo(categoryId);
     return {
       categoryId,
       name: info.name,
       icon: info.icon,
       value,
-      color: PALETTE[idx % PALETTE.length],
+      color: PALETTE[index % PALETTE.length],
     };
   });
 }
 
 function toPieChartData(series: PieSeriesItem[]) {
-  return series.map(s => ({
-    name: `${s.icon} ${s.name}`,
-    population: s.value,
-    color: s.color,
+  return series.map(item => ({
+    name: `${item.icon} ${item.name}`,
+    population: item.value,
+    color: item.color,
     legendFontColor: THEME.colors.textSecondary,
     legendFontSize: 12,
   }));
@@ -74,11 +86,11 @@ function toPieChartData(series: PieSeriesItem[]) {
 
 function formatPercent(value: number, total: number): string {
   if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return '0%';
-  const pct = (value / total) * 100;
-  if (!Number.isFinite(pct) || pct <= 0) return '0%';
-  if (pct < 0.1) return '<0.1%';
-  if (pct < 10) return `${pct.toFixed(1)}%`;
-  return `${pct.toFixed(0)}%`;
+  const percent = (value / total) * 100;
+  if (!Number.isFinite(percent) || percent <= 0) return '0%';
+  if (percent < 0.1) return '<0.1%';
+  if (percent < 10) return `${percent.toFixed(1)}%`;
+  return `${percent.toFixed(0)}%`;
 }
 
 function LegendList({
@@ -92,16 +104,16 @@ function LegendList({
 }) {
   return (
     <View style={styles.legend}>
-      {series.map(s => (
-        <View key={s.categoryId} style={styles.legendRow}>
+      {series.map(item => (
+        <View key={item.categoryId} style={styles.legendRow}>
           <View style={styles.legendLeft}>
-            <View style={[styles.legendSwatch, { backgroundColor: s.color }]} />
+            <View style={[styles.legendSwatch, { backgroundColor: item.color }]} />
             <Text style={styles.legendName} numberOfLines={1}>
-              {s.icon} {s.name}
+              {item.icon} {item.name}
             </Text>
           </View>
           <Text style={styles.legendMeta} numberOfLines={1}>
-            {formatPercent(s.value, total)} · {formatCurrency(s.value)}
+            {formatPercent(item.value, total)} · {formatCurrency(item.value)}
             {valueSuffix ?? ''}
           </Text>
         </View>
@@ -114,19 +126,19 @@ export function StatisticsScreen({}: Props) {
   const db = useSQLiteContext();
   const { itemCategories, subscriptionCategories, storedCardCategories } = useCategories();
   const [items, setItems] = useState<OneTimeItem[]>([]);
-  const [subs, setSubs] = useState<Subscription[]>([]);
-  const [cards, setCards] = useState<StoredCard[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [i, s, c] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
       ]);
-      setItems(i);
-      setSubs(s);
-      setCards(c);
+      setItems(nextItems);
+      setSubscriptions(nextSubscriptions);
+      setStoredCards(nextStoredCards);
     } catch (error) {
       console.error('加载统计数据失败', error);
     }
@@ -143,21 +155,23 @@ export function StatisticsScreen({}: Props) {
 
   const resolveItemCategory = useCallback(
     (categoryId: string) =>
-      itemCategories.find(c => c.id === categoryId) ?? fallbackCategory(categoryId),
+      itemCategories.find(category => category.id === categoryId) ??
+      fallbackCategory(categoryId, 'item'),
     [itemCategories],
   );
 
-  const resolveAnyCategory = useCallback(
+  const resolveSubscriptionCategory = useCallback(
     (categoryId: string) =>
-      subscriptionCategories.find(c => c.id === categoryId) ??
-      itemCategories.find(c => c.id === categoryId) ??
-      fallbackCategory(categoryId),
+      subscriptionCategories.find(category => category.id === categoryId) ??
+      itemCategories.find(category => category.id === categoryId) ??
+      fallbackCategory(categoryId, 'subscription'),
     [itemCategories, subscriptionCategories],
   );
 
   const resolveStoredCardCategory = useCallback(
     (categoryId: string) =>
-      storedCardCategories.find(c => c.id === categoryId) ?? fallbackCategory(categoryId),
+      storedCardCategories.find(category => category.id === categoryId) ??
+      fallbackCategory(categoryId, 'stored_card'),
     [storedCardCategories],
   );
 
@@ -177,32 +191,26 @@ export function StatisticsScreen({}: Props) {
     for (const item of items) {
       if (item.status !== 'unredeemed') continue;
       const categoryId = item.category ?? 'other';
-      const v = calculateDailyDebt(item.monthly_payment ?? 0);
-      sums.set(categoryId, (sums.get(categoryId) ?? 0) + v);
+      const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
+      sums.set(categoryId, (sums.get(categoryId) ?? 0) + dailyDebt);
     }
 
-    for (const sub of subs) {
-      if (sub.status !== 'active') continue;
-      const categoryId = sub.category ?? 'other';
-      const v = calculateSubscriptionDailyCost(sub.cycle_price, sub.billing_cycle);
-      sums.set(categoryId, (sums.get(categoryId) ?? 0) + v);
+    for (const subscription of subscriptions) {
+      if (subscription.status !== 'active') continue;
+      const categoryId = subscription.category ?? 'other';
+      const dailyCost = calculateSubscriptionDailyCost(
+        subscription.cycle_price,
+        subscription.billing_cycle,
+      );
+      sums.set(categoryId, (sums.get(categoryId) ?? 0) + dailyCost);
     }
 
-    return buildPieSeries(sums, resolveAnyCategory);
-  }, [items, resolveAnyCategory, subs]);
-
-  const totalAssets = useMemo(
-    () => assetSeries.reduce((sum, d) => sum + d.value, 0),
-    [assetSeries],
-  );
-  const totalDaily = useMemo(
-    () => dailySeries.reduce((sum, d) => sum + d.value, 0),
-    [dailySeries],
-  );
+    return buildPieSeries(sums, resolveSubscriptionCategory);
+  }, [items, resolveSubscriptionCategory, subscriptions]);
 
   const storedCardSeries = useMemo(() => {
     const sums = new Map<string, number>();
-    for (const card of cards) {
+    for (const card of storedCards) {
       if (card.status !== 'active') continue;
       const categoryId = card.category ?? 'other';
       const principal = calculateStoredPrincipal(
@@ -213,10 +221,18 @@ export function StatisticsScreen({}: Props) {
       sums.set(categoryId, (sums.get(categoryId) ?? 0) + principal);
     }
     return buildPieSeries(sums, resolveStoredCardCategory);
-  }, [cards, resolveStoredCardCategory]);
+  }, [resolveStoredCardCategory, storedCards]);
 
+  const totalAssets = useMemo(
+    () => assetSeries.reduce((sum, item) => sum + item.value, 0),
+    [assetSeries],
+  );
+  const totalDaily = useMemo(
+    () => dailySeries.reduce((sum, item) => sum + item.value, 0),
+    [dailySeries],
+  );
   const totalStoredPrincipal = useMemo(
-    () => storedCardSeries.reduce((sum, d) => sum + d.value, 0),
+    () => storedCardSeries.reduce((sum, item) => sum + item.value, 0),
     [storedCardSeries],
   );
 
@@ -234,10 +250,10 @@ export function StatisticsScreen({}: Props) {
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.card}>
-          <Text style={styles.title}>买断资产 · 分类价值占比</Text>
+          <Text style={styles.title}>在用资产 · 分类价值占比</Text>
           <Text style={styles.subTitle}>合计：{formatCurrency(totalAssets)}</Text>
           {assetSeries.length === 0 ? (
-            <EmptyState message="暂无数据，先去添加一些买断资产吧。" icon="🧾" />
+            <EmptyState message="暂无在用资产数据，先去添加一些大件资产吧。" icon="📦" />
           ) : (
             <>
               <PieChart
@@ -256,10 +272,10 @@ export function StatisticsScreen({}: Props) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>每日消耗 · 分类金额占比</Text>
+          <Text style={styles.title}>每日成本 · 分类金额占比</Text>
           <Text style={styles.subTitle}>合计：{formatCurrency(totalDaily)} / 天</Text>
           {dailySeries.length === 0 ? (
-            <EmptyState message="暂无数据，先去添加分期物品或订阅吧。" icon="🪙" />
+            <EmptyState message="暂无分期或订阅数据，先去添加长期成本项目吧。" icon="🧾" />
           ) : (
             <>
               <PieChart
@@ -278,10 +294,10 @@ export function StatisticsScreen({}: Props) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.title}>🟨 沉睡卡包 · 实际沉睡本金占比</Text>
+          <Text style={styles.title}>卡包本金 · 分类占比</Text>
           <Text style={styles.subTitle}>合计：{formatCurrency(totalStoredPrincipal)}</Text>
           {storedCardSeries.length === 0 ? (
-            <EmptyState message="暂无储值卡数据，去首页卡包标签添加吧。" icon="💳" />
+            <EmptyState message="暂无卡包数据，去首页卡包标签页添加一项吧。" icon="💳" />
           ) : (
             <>
               <PieChart

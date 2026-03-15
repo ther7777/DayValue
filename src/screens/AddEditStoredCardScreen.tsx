@@ -2,7 +2,7 @@
  * AddEditStoredCardScreen
  * 用途：新增 / 编辑储值卡、计次卡，并通过文案说明折扣卡如何按储值卡口径使用。
  * 输入：路由参数中的 storedCardId、defaultCardType。
- * 输出：保存或删除储值卡记录，必要时同步保存本地封面图片。
+ * 输出：保存或删除卡包记录，必要时同步保存本地封面图片。
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -29,9 +29,11 @@ import {
   BrutalButton,
   CategoryPicker,
   DatePickerField,
+  IconPicker,
   ImagePickerField,
   PixelInput,
 } from '../components';
+import { useCategories } from '../contexts/CategoriesContext';
 import { THEME } from '../utils/constants';
 import { getTodayString } from '../utils/formatters';
 import {
@@ -44,6 +46,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AddEditStoredCard'>;
 
 export function AddEditStoredCardScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
+  const { getCategoryInfo, loading: categoriesLoading } = useCategories();
   const editId = route.params?.storedCardId;
   const defaultCardType = route.params?.defaultCardType ?? 'amount';
   const isEditing = editId !== undefined;
@@ -51,6 +54,11 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('other');
   const [icon, setIcon] = useState('📦');
+  const [iconTouched, setIconTouched] = useState(false);
+  const [pendingLoadedIcon, setPendingLoadedIcon] = useState<{
+    categoryId: string;
+    savedIcon: string | null;
+  } | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
   const [cardType, setCardType] = useState<StoredCardType>(defaultCardType);
@@ -71,19 +79,39 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
   }, [db]);
 
   useEffect(() => {
-    navigation.setOptions({ title: isEditing ? '编辑储值卡' : '新增储值卡' });
+    navigation.setOptions({ title: isEditing ? '编辑卡包' : '新增卡包' });
     if (isEditing && editId !== undefined) {
       void loadCardSafe(editId);
     }
   }, [editId, isEditing, loadCardSafe, navigation]);
 
+  useEffect(() => {
+    if (isEditing || categoriesLoading || iconTouched) return;
+    const nextIcon = getCategoryInfo('stored_card', category).icon;
+    if (icon !== nextIcon) {
+      setIcon(nextIcon);
+    }
+  }, [categoriesLoading, category, getCategoryInfo, icon, iconTouched, isEditing]);
+
+  useEffect(() => {
+    if (!pendingLoadedIcon || categoriesLoading) return;
+
+    const categoryDefaultIcon = getCategoryInfo('stored_card', pendingLoadedIcon.categoryId).icon;
+    setIcon(pendingLoadedIcon.savedIcon ?? categoryDefaultIcon);
+    setIconTouched(
+      Boolean(pendingLoadedIcon.savedIcon && pendingLoadedIcon.savedIcon !== categoryDefaultIcon),
+    );
+    setPendingLoadedIcon(null);
+  }, [categoriesLoading, getCategoryInfo, pendingLoadedIcon]);
+
   async function loadCard(id: number) {
     const card = await getStoredCardById(db, id);
     if (!card) return;
 
+    const nextCategoryId = card.category ?? 'other';
+
     setName(card.name);
-    setCategory(card.category ?? 'other');
-    setIcon(card.icon ?? '📦');
+    setCategory(nextCategoryId);
     setImageUri(card.image_uri ?? null);
     setOriginalImageUri(card.image_uri ?? null);
     setCardType(card.card_type);
@@ -93,11 +121,20 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
     setLastUpdatedDate(card.last_updated_date);
     setReminderDays(String(card.reminder_days));
     setStatus(card.status);
+    setIconTouched(false);
+    setPendingLoadedIcon({ categoryId: nextCategoryId, savedIcon: card.icon ?? null });
   }
 
   function handleCategoryChange(cat: CategoryInfo) {
     setCategory(cat.id);
-    setIcon(cat.icon);
+    if (!iconTouched) {
+      setIcon(cat.icon);
+    }
+  }
+
+  function handleIconChange(nextIcon: string) {
+    setIcon(nextIcon);
+    setIconTouched(true);
   }
 
   async function handlePickImage() {
@@ -249,25 +286,32 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
           onSelect={handleCategoryChange}
         />
 
+        <IconPicker
+          label="卡包图标"
+          value={icon}
+          onSelect={handleIconChange}
+          helperText="默认跟随分类预填；手动修改后会独立保存，不再随分类变化。"
+        />
+
         <ImagePickerField
           label="封面图片（可选）"
           imageUri={imageUri}
           fallbackIcon={icon}
           onPick={handlePickImage}
           onRemove={() => setImageUri(null)}
-          helperText="上传后只覆盖当前这张卡。首页卡包会优先显示图片；未上传时继续显示分类图标。折扣卡仍归在储值卡里，图片逻辑也一样。"
+          helperText="上传后只覆盖当前这张卡。首页卡包会优先显示图片；未上传时继续显示记录图标。"
         />
 
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>卡片类型</Text>
           <View style={styles.toggleRow}>
             <TypeButton
-              title="💵 储值卡"
+              title="💼 储值卡"
               active={cardType === 'amount'}
               onPress={() => setCardType('amount')}
             />
             <TypeButton
-              title="🎫 计次卡"
+              title="🎯 计次卡"
               active={cardType === 'count'}
               onPress={() => setCardType('count')}
             />
@@ -292,9 +336,10 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
 
         {cardType === 'amount' ? (
           <Text style={styles.hintText}>
-            普通送钱型储值卡：例如充 800 送 200，总面值填 1000。
+            普通送金额型储值卡：例如充 800 送 200，总面值填 1000。
             {'\n'}
-            折扣卡仍按储值卡来记：例如“充 200，消费打 8 折”，建议总面值直接填实际支付金额 200，后续更新余额时直接照抄商家显示的剩余余额，不需要自己换算原价。
+            折扣卡仍按储值卡来记：例如“充 200，消费打 8 折”，建议总面值直接填实际支付金额 200，
+            后续更新余额时直接照抄商家显示的剩余余额，不需要自己换算原价。
           </Text>
         ) : (
           <Text style={styles.hintText}>
@@ -421,7 +466,7 @@ const styles = StyleSheet.create({
   },
   toggleActive: {
     borderColor: THEME.colors.borderDark,
-    backgroundColor: THEME.colors.warning + '33',
+    backgroundColor: THEME.colors.primaryLight + '30',
   },
   toggleText: {
     fontSize: THEME.fontSize.md,
@@ -429,21 +474,21 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
   },
   toggleTextActive: {
-    color: '#856404',
+    color: THEME.colors.primary,
     fontWeight: '700',
-  },
-  archiveRow: {
-    marginBottom: THEME.spacing.md,
-  },
-  archiveBtn: {
-    width: '100%',
   },
   hintText: {
     fontSize: THEME.fontSize.xs,
-    color: THEME.colors.textSecondary,
-    marginTop: -THEME.spacing.sm,
-    marginBottom: THEME.spacing.md,
     lineHeight: 18,
+    color: THEME.colors.textSecondary,
+    marginTop: -4,
+    marginBottom: THEME.spacing.md,
+  },
+  archiveRow: {
+    marginTop: THEME.spacing.md,
+  },
+  archiveBtn: {
+    width: '100%',
   },
   actions: {
     marginTop: THEME.spacing.xl,

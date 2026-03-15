@@ -41,9 +41,7 @@ export async function pickEntityImageFromLibraryAsync(): Promise<string | null> 
 
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
-    allowsEditing: true,
-    aspect: [1, 1],
-    shape: 'rectangle',
+    allowsEditing: false,
     defaultTab: 'photos',
     quality: 1,
   });

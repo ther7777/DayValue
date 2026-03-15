@@ -18,9 +18,11 @@ import {
   BrutalButton,
   CategoryPicker,
   DatePickerField,
+  IconPicker,
   ImagePickerField,
   PixelInput,
 } from '../components';
+import { useCategories } from '../contexts/CategoriesContext';
 import { THEME } from '../utils/constants';
 import { getTodayString } from '../utils/formatters';
 import { calculateIRR, calculateInstallmentPremium } from '../utils/calculations';
@@ -33,6 +35,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AddEditItem'>;
 
 export function AddEditItemScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
+  const { getCategoryInfo, loading: categoriesLoading } = useCategories();
   const editId = route.params?.itemId;
   const isEditing = editId !== undefined;
   const defaultIsInstallment = route.params?.defaultIsInstallment ?? false;
@@ -40,6 +43,11 @@ export function AddEditItemScreen({ route, navigation }: Props) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('digital');
   const [icon, setIcon] = useState('📱');
+  const [iconTouched, setIconTouched] = useState(false);
+  const [pendingLoadedIcon, setPendingLoadedIcon] = useState<{
+    categoryId: string;
+    savedIcon: string | null;
+  } | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
   const [totalPrice, setTotalPrice] = useState('');
@@ -51,8 +59,6 @@ export function AddEditItemScreen({ route, navigation }: Props) {
   const [downPayment, setDownPayment] = useState('');
 
   const [originalStatus, setOriginalStatus] = useState<OneTimeItemStatus | null>(null);
-  const [lockedSalvageValue, setLockedSalvageValue] = useState(0);
-  const [lockedIsSold, setLockedIsSold] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const irrWarning = useMemo(() => {
@@ -96,30 +102,56 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     }
   }, [editId, isEditing, loadItemSafe, navigation]);
 
+  useEffect(() => {
+    if (isEditing || categoriesLoading || iconTouched) return;
+    const nextIcon = getCategoryInfo('item', category).icon;
+    if (icon !== nextIcon) {
+      setIcon(nextIcon);
+    }
+  }, [categoriesLoading, category, getCategoryInfo, icon, iconTouched, isEditing]);
+
+  useEffect(() => {
+    if (!pendingLoadedIcon || categoriesLoading) return;
+
+    const categoryDefaultIcon = getCategoryInfo('item', pendingLoadedIcon.categoryId).icon;
+    setIcon(pendingLoadedIcon.savedIcon ?? categoryDefaultIcon);
+    setIconTouched(
+      Boolean(pendingLoadedIcon.savedIcon && pendingLoadedIcon.savedIcon !== categoryDefaultIcon),
+    );
+    setPendingLoadedIcon(null);
+  }, [categoriesLoading, getCategoryInfo, pendingLoadedIcon]);
+
   async function loadItem(id: number) {
     const item = await getOneTimeItemById(db, id);
     if (!item) return;
 
+    const nextCategoryId = item.category ?? 'other';
+
     setName(item.name);
-    setCategory(item.category ?? 'other');
-    setIcon(item.icon ?? '📦');
+    setCategory(nextCategoryId);
     setImageUri(item.image_uri ?? null);
     setOriginalImageUri(item.image_uri ?? null);
     setTotalPrice(String(item.total_price));
     setBuyDate(item.buy_date);
-
     setIsInstallment(item.is_installment === 1);
     setInstallmentMonths(item.installment_months ? String(item.installment_months) : '');
     setMonthlyPayment(item.monthly_payment ? String(item.monthly_payment) : '');
     setDownPayment(item.down_payment ? String(item.down_payment) : '');
     setOriginalStatus(item.status);
-    setLockedSalvageValue(item.salvage_value ?? 0);
-    setLockedIsSold(item.status === 'archived' && item.archived_reason === 'sold');
+    setIconTouched(false);
+    setPendingLoadedIcon({ categoryId: nextCategoryId, savedIcon: item.icon ?? null });
   }
 
   function handleCategoryChange(cat: CategoryInfo) {
     setCategory(cat.id);
-    setIcon(cat.icon);
+    if (!iconTouched) {
+      setIcon(cat.icon);
+    }
+  }
+
+  function handleIconChange(nextIcon: string) {
+    setIcon(nextIcon);
+    setIconTouched(true);
   }
 
   async function handlePickImage() {
@@ -151,21 +183,6 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     const totalPriceNum = parseFloat(totalPrice);
     if (Number.isNaN(totalPriceNum) || totalPriceNum <= 0) {
       Alert.alert('提示', '请输入有效的总金额');
-      return;
-    }
-
-    if (
-      isEditing &&
-      originalStatus === 'archived' &&
-      lockedSalvageValue > 0 &&
-      totalPriceNum < lockedSalvageValue
-    ) {
-      Alert.alert(
-        '提示',
-        lockedIsSold
-          ? `已售出资产的原价不能低于卖出价（¥${lockedSalvageValue.toFixed(2)}）`
-          : `该资产已记录残值或卖出价（¥${lockedSalvageValue.toFixed(2)}），原价不能低于这个数值`,
-      );
       return;
     }
 
@@ -253,6 +270,13 @@ export function AddEditItemScreen({ route, navigation }: Props) {
         />
 
         <CategoryPicker type="item" selectedId={category} onSelect={handleCategoryChange} />
+
+        <IconPicker
+          label="物品图标"
+          value={icon}
+          onSelect={handleIconChange}
+          helperText="默认跟随分类预填；手动修改后会独立保存，不再随分类变化。"
+        />
 
         <ImagePickerField
           label="封面图片（可选）"

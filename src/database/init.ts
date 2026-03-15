@@ -29,12 +29,91 @@ async function ensureColumn(
   await db.execAsync(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
 }
 
+async function rebuildOneTimeItemsTable(current: SQLiteDatabase): Promise<void> {
+  await current.execAsync(`
+    CREATE TABLE IF NOT EXISTS OneTimeItems_new (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      name               TEXT    NOT NULL,
+      category           TEXT,
+      icon               TEXT,
+      image_uri          TEXT,
+      total_price        REAL    NOT NULL CHECK(total_price > 0),
+      buy_date           TEXT    NOT NULL,
+      status             TEXT    NOT NULL CHECK(status IN ('unredeemed', 'active', 'archived')),
+      salvage_value      REAL    DEFAULT 0 CHECK(salvage_value >= 0),
+      active_days        INTEGER NOT NULL DEFAULT 0 CHECK(active_days >= 0),
+      active_start_date  TEXT,
+      archived_reason    TEXT,
+      is_installment     INTEGER DEFAULT 0 CHECK(is_installment IN (0, 1)),
+      installment_months INTEGER,
+      monthly_payment    REAL,
+      down_payment       REAL    DEFAULT 0,
+      end_date           TEXT,
+      CHECK(is_installment = 1 OR (installment_months IS NULL AND monthly_payment IS NULL)),
+      CHECK(is_installment = 0 OR (
+        installment_months IS NOT NULL
+        AND installment_months > 0
+        AND monthly_payment IS NOT NULL
+        AND monthly_payment > 0
+      )),
+      CHECK(status != 'unredeemed' OR is_installment = 1),
+      CHECK(status = 'archived' OR end_date IS NULL),
+      CHECK(status != 'archived' OR end_date IS NOT NULL)
+    );
+
+    INSERT INTO OneTimeItems_new (
+      id,
+      name,
+      category,
+      icon,
+      image_uri,
+      total_price,
+      buy_date,
+      status,
+      salvage_value,
+      active_days,
+      active_start_date,
+      archived_reason,
+      is_installment,
+      installment_months,
+      monthly_payment,
+      down_payment,
+      end_date
+    )
+    SELECT
+      id,
+      name,
+      category,
+      icon,
+      image_uri,
+      total_price,
+      buy_date,
+      status,
+      salvage_value,
+      active_days,
+      active_start_date,
+      archived_reason,
+      is_installment,
+      installment_months,
+      monthly_payment,
+      down_payment,
+      end_date
+    FROM OneTimeItems;
+
+    DROP TABLE OneTimeItems;
+    ALTER TABLE OneTimeItems_new RENAME TO OneTimeItems;
+
+    CREATE INDEX IF NOT EXISTS idx_one_time_items_status ON OneTimeItems(status);
+    CREATE INDEX IF NOT EXISTS idx_one_time_items_buy_date ON OneTimeItems(buy_date);
+  `);
+}
+
 /**
  * 初始化数据库结构并应用受支持的迁移。
  * 用于 SQLiteProvider.onInit。
  */
 export async function initDB(db: SQLiteDatabase): Promise<void> {
-  const SCHEMA_VERSION = 7;
+  const SCHEMA_VERSION = 8;
 
   async function migrate(current: SQLiteDatabase) {
     const versionRow = await current.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -59,11 +138,16 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 4
       && userVersion !== 5
       && userVersion !== 6
+      && userVersion !== 7
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
       );
-    } else if (userVersion === 4) {
+    }
+
+    let workingVersion = __DEV__ && userVersion !== SCHEMA_VERSION ? 0 : userVersion;
+
+    if (workingVersion === 4) {
       await current.execAsync(`
         CREATE TABLE IF NOT EXISTS Categories_new (
           id   TEXT NOT NULL,
@@ -80,7 +164,10 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         ALTER TABLE Categories_new RENAME TO Categories;
         CREATE INDEX IF NOT EXISTS idx_categories_type ON Categories(type);
       `);
-    } else if (userVersion === 5) {
+      workingVersion = 5;
+    }
+
+    if (workingVersion === 5) {
       await current.execAsync(`
         ALTER TABLE OneTimeItems ADD COLUMN active_days INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE OneTimeItems ADD COLUMN active_start_date TEXT;
@@ -104,12 +191,21 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
           END
         WHERE status = 'archived';
       `);
-    } else if (userVersion === 6) {
+      workingVersion = 6;
+    }
+
+    if (workingVersion === 6) {
       await current.execAsync(`
         ALTER TABLE OneTimeItems ADD COLUMN image_uri TEXT;
         ALTER TABLE Subscriptions ADD COLUMN image_uri TEXT;
         ALTER TABLE StoredCards ADD COLUMN image_uri TEXT;
       `);
+      workingVersion = 7;
+    }
+
+    if (workingVersion === 7) {
+      await rebuildOneTimeItemsTable(current);
+      workingVersion = 8;
     }
 
     await current.execAsync(`
@@ -122,7 +218,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         total_price        REAL    NOT NULL CHECK(total_price > 0),
         buy_date           TEXT    NOT NULL,
         status             TEXT    NOT NULL CHECK(status IN ('unredeemed', 'active', 'archived')),
-        salvage_value      REAL    DEFAULT 0 CHECK(salvage_value >= 0 AND salvage_value <= total_price),
+        salvage_value      REAL    DEFAULT 0 CHECK(salvage_value >= 0),
         active_days        INTEGER NOT NULL DEFAULT 0 CHECK(active_days >= 0),
         active_start_date  TEXT,
         archived_reason    TEXT,

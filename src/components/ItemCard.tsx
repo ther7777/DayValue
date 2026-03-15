@@ -1,14 +1,20 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { calculateDaysUsed, calculateDailyCost, calculateDailyDebt, calculateOneTimeItemActiveDays } from '../utils/calculations';
+import {
+  calculateDaysUsed,
+  calculateDailyCost,
+  calculateDailyDebt,
+  calculateOneTimeItemActiveDays,
+  calculateRealizedProfit,
+  isProfitableSale,
+} from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
 import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import { EntityCover } from './EntityCover';
 import type { OneTimeItem } from '../types';
-import type { StyleProp, ViewStyle } from 'react-native';
 
 type ItemCardLayout = 'list' | 'grid';
 
@@ -30,6 +36,8 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
   const activeDays = calculateOneTimeItemActiveDays(item);
   const archivedReason = item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
   const isSold = item.status === 'archived' && archivedReason === 'sold';
+  const isProfitableSold = isSold && isProfitableSale(item.total_price, item.salvage_value);
+  const realizedProfit = isSold ? calculateRealizedProfit(item.total_price, item.salvage_value) : 0;
   const dailyCost = calculateDailyCost(item.total_price, isSold ? item.salvage_value : 0, activeDays);
   const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
 
@@ -40,24 +48,25 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
         ? '已售出'
         : '已停用';
 
-  // 赎身进度计算：以 30天为一个月供估算已还期数
   const totalMonths = item.installment_months ?? 0;
   const monthsPaid = isUnredeemed && totalMonths > 0
     ? Math.min(Math.floor(calculateDaysUsed(item.buy_date, null) / 30), totalMonths)
     : 0;
-  const BAR_BLOCKS = 10;
-  const filledBlocks = totalMonths > 0 ? Math.round((monthsPaid / totalMonths) * BAR_BLOCKS) : 0;
+  const barBlocks = 10;
+  const filledBlocks = totalMonths > 0 ? Math.round((monthsPaid / totalMonths) * barBlocks) : 0;
 
   const variant = isUnredeemed ? 'debt' : 'asset';
   const variantColors = CARD_VARIANT_COLORS[variant];
+  const highlightLabel = isUnredeemed ? '日供' : isProfitableSold ? '盈利' : '日均';
+  const highlightValue = isUnredeemed
+    ? formatCurrency(dailyDebt)
+    : isProfitableSold
+      ? formatCurrency(realizedProfit)
+      : formatCurrency(dailyCost);
 
   if (isGrid) {
     return (
-      <CardShell
-        onPress={onPress}
-        variant={variant}
-        style={[styles.gridCard, style]}
-      >
+      <CardShell onPress={onPress} variant={variant} style={[styles.gridCard, style]}>
         <View style={styles.gridTop}>
           <EntityCover
             imageUri={imageUri}
@@ -77,7 +86,7 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
 
         <View style={styles.gridStats}>
           <View style={styles.gridStatBlock}>
-            <Text style={styles.gridStatLabel}>{isUnredeemed ? '月供' : '购入'}</Text>
+            <Text style={styles.gridStatLabel}>{isUnredeemed ? '月供' : '买入'}</Text>
             <Text style={styles.gridStatValue}>
               {formatCurrency(isUnredeemed ? (item.monthly_payment ?? 0) : item.total_price)}
             </Text>
@@ -96,9 +105,9 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
             { backgroundColor: variantColors.statHighlightBg + '18' },
           ]}
         >
-          <Text style={styles.gridHighlightLabel}>{isUnredeemed ? '日供' : '日均'}</Text>
+          <Text style={styles.gridHighlightLabel}>{highlightLabel}</Text>
           <Text style={[styles.gridHighlightValue, { color: variantColors.accentText }]}>
-            {formatCurrency(isUnredeemed ? dailyDebt : dailyCost)}
+            {highlightValue}
           </Text>
         </View>
       </CardShell>
@@ -106,12 +115,7 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
   }
 
   return (
-    <CardShell
-      onPress={onPress}
-      variant={variant}
-      style={style}
-    >
-      {/* 顶部：图标 + 名称 + 状态 */}
+    <CardShell onPress={onPress} variant={variant} style={style}>
       <View style={styles.header}>
         <EntityCover
           imageUri={imageUri}
@@ -126,7 +130,6 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
         <StatusBadge status={item.status} labelOverride={archivedLabel} />
       </View>
 
-      {/* 底部：关键数值 */}
       <View style={styles.stats}>
         {isUnredeemed ? (
           <>
@@ -148,7 +151,7 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
         ) : (
           <>
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>购入</Text>
+              <Text style={styles.statLabel}>买入</Text>
               <Text style={styles.statValue}>{formatCurrency(item.total_price)}</Text>
             </View>
             <View style={styles.statItem}>
@@ -156,34 +159,32 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
               <Text style={styles.statValue}>{activeDays} 天</Text>
             </View>
             <View style={[styles.statItem, styles.statHighlight, { backgroundColor: variantColors.statHighlightBg + '18' }]}>
-              <Text style={styles.statLabel}>日均</Text>
+              <Text style={styles.statLabel}>{isProfitableSold ? '盈利' : '日均'}</Text>
               <Text style={[styles.statValue, styles.dailyCost, { color: variantColors.accentText }]}>
-                {formatCurrency(dailyCost)}
+                {isProfitableSold ? formatCurrency(realizedProfit) : formatCurrency(dailyCost)}
               </Text>
             </View>
           </>
         )}
       </View>
 
-      {/* 赎身进度条（仅分期未赎身物品显示） */}
       {isUnredeemed && totalMonths > 0 && (
         <View style={styles.progressSection}>
           <Text style={styles.progressLabel}>赎身进度</Text>
           <View style={styles.progressBar}>
-            {Array.from({ length: BAR_BLOCKS }).map((_, i) => (
+            {Array.from({ length: barBlocks }).map((_, index) => (
               <View
-                key={i}
+                key={index}
                 style={[
                   styles.progressBlock,
-                  i < filledBlocks ? styles.progressBlockFilled : styles.progressBlockEmpty,
+                  index < filledBlocks ? styles.progressBlockFilled : styles.progressBlockEmpty,
                 ]}
               />
             ))}
           </View>
-          <Text style={styles.progressText}>{monthsPaid} / {totalMonths} 期</Text>
+          <Text style={styles.progressText}>{monthsPaid} / {totalMonths} 月</Text>
         </View>
       )}
-
     </CardShell>
   );
 }

@@ -14,7 +14,7 @@ type ImagePickerFieldProps = {
 };
 
 const DEFAULT_HELPER_TEXT =
-  '上传后只覆盖当前这条记录。首页卡片与详情页会优先显示图片；不上传时继续显示分类图标。';
+  '上传后会优先显示图片封面；不上传时继续显示当前图标。你也可以随时重新更换或恢复默认图标。';
 
 export function ImagePickerField({
   label,

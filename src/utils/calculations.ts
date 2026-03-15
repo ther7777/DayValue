@@ -31,6 +31,19 @@ export function calculateDailyCost(
   return effectiveCost / daysUsed;
 }
 
+/**
+ * 计算已售出资产的已实现收益。
+ * 返回值可以为正（盈利）、0（保本）或负（亏损）。
+ */
+export function calculateRealizedProfit(price: number, soldPrice: number): number {
+  return soldPrice - price;
+}
+
+/** 判断卖出是否已经产生正收益。 */
+export function isProfitableSale(price: number, soldPrice: number): boolean {
+  return calculateRealizedProfit(price, soldPrice) > 0;
+}
+
 import type { BillingCycle, OneTimeItem } from '../types';
 
 /**

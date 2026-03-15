@@ -56,3 +56,12 @@ DayValue 是一款采用像素风（Pixel Art）与新粗野主义（Neobrutalis
 **透明构建**：Release 页面提供的 APK 是通过 GitHub Actions 自动化生成的，确保安装包与你看到的源码完全一致，杜绝"本地加料"。
 
 **绝对离线**：本应用**不申请网络权限**（`android.permission.INTERNET`）。这意味着即便有病毒，它也无法将数据传出你的手机。
+
+## 支持我们
+
+如果你觉得 DayValue 对你有帮助，欢迎赞赏支持我继续打磨这个项目 ☕️
+你的支持将直接用于承担昂贵的 iOS 开发者账号费用，推进 DayValue 早日上架 App Store。
+
+<p align="center">
+  <img src="assets/pictures/%E8%B5%9E%E8%B5%8F%E7%A0%81.jpg" alt="DayValue donation QR" width="320" />
+</p>
